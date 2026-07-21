@@ -95,7 +95,7 @@ function renderStudentRows(content, list) {
 
   tbody.querySelectorAll('tr').forEach(tr => {
     tr.addEventListener('click', () => {
-      const s = students.find(x => x.id === parseInt(tr.dataset.id));
+      const s = students.find(x => x.id === tr.dataset.id);
       openStudentModal(content.closest('#portal-panel') || document.body, s);
     });
   });
