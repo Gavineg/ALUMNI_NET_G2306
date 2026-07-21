@@ -105,7 +105,7 @@ export async function revealTargets(chart, scatterData, linesData, colorMode) {
     const memberCount = cluster.universities
       ? cluster.universities.reduce((s, u) => s + (u.members?.length || 0), 0)
       : (cluster.members?.length || 1);
-    const size = Math.min(6 + memberCount * 2, 12);
+    const size = Math.min(7 + memberCount * 2, 12);
 
     chart.setOption({
       series: [{
