@@ -29,12 +29,13 @@ async function getAccessToken(env) {
 
   const sigInput = `${header}.${payload}`;
 
-  // 解析 PEM 私钥
+  // 解析 PEM 私钥（兼容 \n 字面量和真实换行）
   const pemBody = env.FIREBASE_PRIVATE_KEY
     .replace(/\\n/g, '\n')
+    .replace(/\n/g, '\n')
     .replace('-----BEGIN PRIVATE KEY-----', '')
     .replace('-----END PRIVATE KEY-----', '')
-    .replace(/\s/g, '');
+    .replace(/\s+/g, '');
 
   const keyDer = Uint8Array.from(atob(pemBody), c => c.charCodeAt(0));
   const cryptoKey = await crypto.subtle.importKey(
