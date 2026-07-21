@@ -27,10 +27,12 @@ export function initMapUI(chart, initZoom, initCenter) {
     if (cluster.universities?.length > 1) {
       // 集群点：显示城市选择
       await showCityMenu(cluster);
+    } else if (cluster.universities?.length === 1) {
+      // 单个集群（只有一所大学）
+      await showStudentInfo([cluster.universities[0]]);
     } else {
-      // 单点：直接显示学生信息
-      const uni = cluster.universities[0];
-      await showStudentInfo([uni]);
+      // 非集群结构（兼容旧格式）
+      await showStudentInfo([cluster]);
     }
   });
 }
