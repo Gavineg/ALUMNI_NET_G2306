@@ -153,7 +153,9 @@ async function showStudentInfo(unis) {
   const session = ++currentSession;
   abortBios();
 
+  const panel    = document.getElementById('info-panel');
   const terminal = document.getElementById('terminal-content');
+  panel.classList.add('active');
   terminal.innerHTML = '';
 
   const safe = async lines => {
