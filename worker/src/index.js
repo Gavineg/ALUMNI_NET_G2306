@@ -6,6 +6,7 @@ import {
   adminListStudents, adminCreateStudent, adminUpdateStudent, adminDeleteStudent,
   getSettings, updateSettings
 } from './students.js';
+import { FirestoreDB } from './firestore.js';
 
 const CORS = {
   'Access-Control-Allow-Origin': '*',
@@ -42,31 +43,42 @@ export default {
       return new Response(null, { status: 204, headers: CORS });
     }
 
+    const db = new FirestoreDB(env);
+
     // ── Bootstrap（仅本地开发，创建初始管理员）──────────────
     if (path === '/api/bootstrap' && method === 'POST') {
-      const existing = await env.DB.prepare('SELECT id FROM students WHERE is_admin=1').first();
-      if (existing) return json({ error: 'admin already exists' }, 400);
+      const admins = await db.query('students', 'is_admin', '==', 1);
+      if (admins.length > 0) return json({ error: 'admin already exists' }, 400);
+
       const { username, password, display_name } = await request.json().catch(() => ({}));
       if (!username || !password) return json({ error: 'missing fields' }, 400);
+
       const { hash, salt } = await hashPassword(password);
-      await env.DB.prepare(
-        'INSERT INTO students (username,password_hash,salt,display_name,is_admin) VALUES (?,?,?,?,1)'
-      ).bind(username, hash, salt, display_name || 'Admin').run();
+      const now = new Date().toISOString();
+      await db.add('students', {
+        username,
+        password_hash: hash,
+        salt,
+        display_name: display_name || 'Admin',
+        is_admin:     1,
+        can_cengfan:  0,
+        created_at:   now,
+        updated_at:   now
+      });
       return json({ ok: true });
     }
 
     // ── Public ────────────────────────────────────────────────
     if (path === '/api/map/data' && method === 'GET') {
-      return addCors(await mapData(env.DB));
+      return addCors(await mapData(db));
     }
 
     if (path === '/api/auth/login' && method === 'POST') {
       const { username, password } = await request.json().catch(() => ({}));
       if (!username || !password) return json({ error: 'missing fields' }, 400);
 
-      const row = await env.DB.prepare(
-        'SELECT id, password_hash, salt, is_admin, display_name FROM students WHERE username = ?'
-      ).bind(username).first();
+      const rows = await db.query('students', 'username', '==', username);
+      const row  = rows[0];
 
       if (!row || !(await verifyPassword(password, row.password_hash, row.salt))) {
         return json({ error: 'invalid credentials' }, 401);
@@ -89,8 +101,8 @@ export default {
 
     if (path === '/api/student/me') {
       if (!user) return json({ error: 'unauthorized' }, 401);
-      if (method === 'GET') return addCors(await getMe(user.sub, env.DB));
-      if (method === 'PUT') return addCors(await updateMe(user.sub, request, env.DB));
+      if (method === 'GET') return addCors(await getMe(user.sub, db));
+      if (method === 'PUT') return addCors(await updateMe(user.sub, request, db));
     }
 
     if (path === '/api/student/password' && method === 'PUT') {
@@ -99,18 +111,17 @@ export default {
       if (!old_password || !new_password) return json({ error: 'missing fields' }, 400);
       if (new_password.length < 6) return json({ error: 'password too short' }, 400);
 
-      const row = await env.DB.prepare(
-        'SELECT password_hash, salt FROM students WHERE id = ?'
-      ).bind(user.sub).first();
-
+      const row = await db.get('students', user.sub);
       if (!row || !(await verifyPassword(old_password, row.password_hash, row.salt))) {
         return json({ error: 'current password incorrect' }, 401);
       }
 
       const { hash, salt } = await hashPassword(new_password);
-      await env.DB.prepare(
-        "UPDATE students SET password_hash=?, salt=?, updated_at=datetime('now') WHERE id=?"
-      ).bind(hash, salt, user.sub).run();
+      await db.set('students', user.sub, {
+        password_hash: hash,
+        salt,
+        updated_at:    new Date().toISOString()
+      });
       return json({ ok: true });
     }
 
@@ -120,38 +131,38 @@ export default {
 
       // Students
       if (path === '/api/admin/students') {
-        if (method === 'GET')  return addCors(await adminListStudents(env.DB));
-        if (method === 'POST') return addCors(await adminCreateStudent(request, env.DB));
+        if (method === 'GET')  return addCors(await adminListStudents(db));
+        if (method === 'POST') return addCors(await adminCreateStudent(request, db));
       }
-      const studentMatch = path.match(/^\/api\/admin\/students\/(\d+)$/);
+      const studentMatch = path.match(/^\/api\/admin\/students\/([^/]+)$/);
       if (studentMatch) {
-        const id = parseInt(studentMatch[1]);
-        if (method === 'PUT')    return addCors(await adminUpdateStudent(id, request, env.DB));
-        if (method === 'DELETE') return addCors(await adminDeleteStudent(id, env.DB));
+        const id = studentMatch[1];
+        if (method === 'PUT')    return addCors(await adminUpdateStudent(id, request, db));
+        if (method === 'DELETE') return addCors(await adminDeleteStudent(id, db));
       }
 
       // Banned words
       if (path === '/api/admin/banned-words') {
-        if (method === 'GET')  return json(await listBannedWords(env.DB));
+        if (method === 'GET')  return json(await listBannedWords(db));
         if (method === 'POST') {
           const { word } = await request.json().catch(() => ({}));
           if (!word) return json({ error: 'word required' }, 400);
-          await addBannedWord(word, env.DB);
+          await addBannedWord(word, db);
           return json({ ok: true }, 201);
         }
       }
-      const bwMatch = path.match(/^\/api\/admin\/banned-words\/(\d+)$/);
+      const bwMatch = path.match(/^\/api\/admin\/banned-words\/([^/]+)$/);
       if (bwMatch) {
         if (method === 'DELETE') {
-          await deleteBannedWord(parseInt(bwMatch[1]), env.DB);
+          await deleteBannedWord(bwMatch[1], db);
           return json({ ok: true });
         }
       }
 
       // Settings
       if (path === '/api/admin/settings') {
-        if (method === 'GET') return addCors(await getSettings(env.DB));
-        if (method === 'PUT') return addCors(await updateSettings(request, env.DB));
+        if (method === 'GET') return addCors(await getSettings(db));
+        if (method === 'PUT') return addCors(await updateSettings(request, db));
       }
     }
 

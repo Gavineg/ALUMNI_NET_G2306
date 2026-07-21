@@ -1,27 +1,26 @@
 /**
- * 从 D1 加载违禁词表，过滤文本中的违禁词（替换为 ***）。
- * 每个请求实时查库（词表小，D1 延迟可接受；如需缓存可加 Cache API）。
+ * 从 Firestore 加载违禁词表，过滤文本中的违禁词（替换为 ***）。
  */
 export async function filterText(text, db) {
   if (!text) return text;
-  const { results } = await db.prepare('SELECT word FROM banned_words').all();
+  const words = await db.list('banned_words');
   let filtered = text;
-  for (const { word } of results) {
-    const re = new RegExp(word.replace(/[.*+?^${}()|[\]\\]/g, '\\$&'), 'gi');
+  for (const doc of words) {
+    if (!doc.word) continue;
+    const re = new RegExp(doc.word.replace(/[.*+?^${}()|[\]\\]/g, '\\$&'), 'gi');
     filtered = filtered.replace(re, '***');
   }
   return filtered;
 }
 
 export async function listBannedWords(db) {
-  const { results } = await db.prepare('SELECT id, word FROM banned_words ORDER BY id').all();
-  return results;
+  return db.list('banned_words');
 }
 
 export async function addBannedWord(word, db) {
-  await db.prepare('INSERT OR IGNORE INTO banned_words (word) VALUES (?)').bind(word.trim()).run();
+  await db.add('banned_words', { word: word.trim() });
 }
 
 export async function deleteBannedWord(id, db) {
-  await db.prepare('DELETE FROM banned_words WHERE id = ?').bind(id).run();
+  await db.delete('banned_words', id);
 }
