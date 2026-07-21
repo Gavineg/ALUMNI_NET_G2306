@@ -1,0 +1,531 @@
+<!DOCTYPE html>
+<html lang="zh-CN">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1.0, user-scalable=no">
+    <title>G2306 蹭饭图 - FLAGSHIP TERMINAL</title>
+    <!-- 引入 ECharts -->
+    <script src="https://cdn.jsdelivr.net/npm/echarts@5.4.3/dist/echarts.min.js"></script>
+    <!-- 引入 ECharts 中国地图数据 -->
+    <script src="https://registry.npmmirror.com/echarts/4.9.0/files/map/js/china.js"></script>
+    
+    <style>
+        :root {
+            --hud-primary: #ffb000;    /* 琥珀橙 */
+            --hud-secondary: #00e676;  /* 雷达绿 */
+            --hud-bg: #07090e;         /* 极深灰黑 */
+            --hud-grid: rgba(255, 176, 0, 0.08); 
+        }
+
+        * {
+            margin: 0;
+            padding: 0;
+            box-sizing: border-box;
+            font-family: 'Courier New', Courier, 'Consolas', monospace; 
+            text-transform: uppercase;
+        }
+
+        body {
+            background-color: var(--hud-bg);
+            background-image: 
+                linear-gradient(var(--hud-grid) 1px, transparent 1px),
+                linear-gradient(90deg, var(--hud-grid) 1px, transparent 1px);
+            background-size: 30px 30px;
+            color: var(--hud-primary);
+            overflow: hidden;
+            width: 100vw;
+            height: 100vh;
+        }
+
+        /* 屏幕 CRT 扫描线特效 */
+        .scanline {
+            position: fixed;
+            top: 0;
+            left: 0;
+            width: 100%;
+            height: 100%;
+            background: linear-gradient(to bottom, transparent 50%, rgba(255, 176, 0, 0.04) 51%);
+            background-size: 100% 4px;
+            pointer-events: none;
+            z-index: 999;
+        }
+        
+        .vignette {
+            position: fixed;
+            top: 0;
+            left: 0;
+            width: 100%;
+            height: 100%;
+            box-shadow: inset 0 0 150px rgba(0,0,0,0.9);
+            pointer-events: none;
+            z-index: 998;
+        }
+
+        /* 顶部命令行栏 */
+        header {
+            position: absolute;
+            top: 20px;
+            left: 20px;
+            z-index: 10;
+            /* 允许点击里面的按钮 */
+            pointer-events: auto; 
+            border-left: 3px solid var(--hud-primary);
+            padding-left: 15px;
+        }
+
+        header h1 {
+            font-size: 20px;
+            letter-spacing: 2px;
+            margin-bottom: 5px;
+            text-shadow: 0 0 5px var(--hud-primary);
+            pointer-events: none;
+        }
+
+        /* 视角重置按钮 */
+        .cmd-btn {
+            display: inline-block;
+            font-size: 12px;
+            color: var(--hud-bg);
+            background-color: var(--hud-primary);
+            padding: 2px 6px;
+            margin-top: 5px;
+            cursor: pointer;
+            font-weight: bold;
+            box-shadow: 0 0 8px rgba(255, 176, 0, 0.5);
+            transition: all 0.2s;
+            opacity: 0;
+            visibility: hidden;
+        }
+        .cmd-btn.visible {
+            opacity: 1;
+            visibility: visible;
+        }
+        .cmd-btn:hover {
+            background-color: #fff;
+            box-shadow: 0 0 12px #fff;
+        }
+
+        .terminal-cursor {
+            display: inline-block;
+            width: 10px;
+            height: 16px;
+            background-color: var(--hud-primary);
+            vertical-align: middle;
+            animation: blink 1s step-end infinite;
+        }
+
+        @keyframes blink {
+            0%, 100% { opacity: 1; }
+            50% { opacity: 0; }
+        }
+
+        #map-container {
+            width: 100%;
+            height: 100%;
+            opacity: 0; 
+            transition: opacity 1s ease-in;
+        }
+
+        /* 机械感终端信息面板 */
+        #info-panel {
+            position: absolute;
+            bottom: 20px;
+            left: 20px;
+            width: calc(100% - 40px);
+            max-width: 400px;
+            background: rgba(7, 9, 14, 0.85);
+            backdrop-filter: blur(5px);
+            clip-path: polygon(0 0, calc(100% - 20px) 0, 100% 20px, 100% 100%, 0 100%);
+            border: 1px solid var(--hud-primary);
+            box-shadow: inset 0 0 15px rgba(255, 176, 0, 0.1);
+            padding: 20px;
+            opacity: 0;
+            visibility: hidden;
+            transform: translateY(20px);
+            transition: all 0.3s ease-out;
+            z-index: 20;
+        }
+
+        #info-panel.active {
+            opacity: 1;
+            visibility: visible;
+            transform: translateY(0);
+        }
+
+        .close-btn {
+            position: absolute;
+            top: 15px;
+            right: 25px;
+            font-size: 16px;
+            color: var(--hud-primary);
+            cursor: pointer;
+            font-weight: bold;
+        }
+        .close-btn:hover { color: var(--hud-secondary); }
+
+        #terminal-content {
+            font-size: 14px;
+            line-height: 1.6;
+            color: var(--hud-secondary);
+            text-shadow: 0 0 5px rgba(0, 230, 118, 0.4);
+            white-space: pre-wrap; 
+            min-height: 120px;
+            max-height: 30vh;
+            overflow-y: auto;
+        }
+        
+        #terminal-content::-webkit-scrollbar { width: 4px; }
+        #terminal-content::-webkit-scrollbar-thumb { background: var(--hud-primary); }
+
+
+        #info-panel.closing{animation:killGlitch .3s steps(3);}
+        /* 修复PC全屏下 transform 与定位 transform 冲突导致的抽搐 */
+        @keyframes killGlitch{
+            0%{filter:brightness(2);opacity:1;}
+            25%{filter:brightness(3);opacity:.8;clip-path:polygon(0 0,100% 0,100% 45%,0 55%);}
+            50%{filter:brightness(1.5);opacity:.45;clip-path:polygon(0 50%,100% 45%,100% 100%,0 100%);}
+            100%{opacity:0;filter:brightness(1);clip-path:polygon(0 0,100% 0,100% 100%,0 100%);}
+        }
+
+        /* 电脑端样式适配 */
+        @media (min-width: 768px) {
+            header h1 { font-size: 24px; }
+            #info-panel {
+                bottom: auto;
+                top: 50%;
+                left: calc(100% - 30px);
+                transform: translateY(-50%) translateX(-100%);
+                clip-path: polygon(0 20px, 20px 0, 100% 0, 100% 100%, 0 100%);
+            }
+            #info-panel.active {
+                transform: translateY(-50%) translateX(-100%);
+            }
+            #terminal-content { max-height: 350px; }
+        }
+    </style>
+</head>
+<body>
+
+    <div class="vignette"></div>
+    <div class="scanline"></div>
+
+    <header>
+        <h1 id="header-text"></h1>
+        <p id="header-subtext" style="font-size:12px; color:rgba(255,176,0,0.6); pointer-events:none;"></p>
+        <!-- 视角重置按钮，防地图移丢 -->
+        <div class="cmd-btn" id="reset-btn" onclick="resetMap()">[SYS.RESTORE_VIEW]</div>
+    </header>
+
+    <div id="map-container"></div>
+
+    <div id="info-panel">
+        <span class="close-btn" onclick="closePanel()">[ABORT]</span>
+        <div style="font-size: 12px; color: var(--hud-primary); border-bottom: 1px dashed var(--hud-primary); padding-bottom: 5px; margin-bottom: 10px;">
+            > SYS.TARGET_DECRYPT //
+        </div>
+        <div id="terminal-content"></div>
+    </div>
+
+    <script>
+        // --- 0. 环境检测与响应式参数 ---
+        const isMobile = window.innerWidth < 768;
+        // 手机端将中心点略微下移，避免被顶部文字遮住，并适当放大
+        const initZoom = isMobile ? 1.8 : 1.2;
+        const initCenter = isMobile ? [105.0, 32.0] : [104.195397, 35.86166];
+
+        // --- 1. 打字机特效函数 ---
+        async function typeWriter(elementId, text, speed = 30) {
+            const el = document.getElementById(elementId);
+            el.innerHTML = '';
+            for (let i = 0; i < text.length; i++) {
+                el.innerHTML += text.charAt(i);
+                if (el.scrollHeight > el.clientHeight) el.scrollTop = el.scrollHeight;
+                await new Promise(r => setTimeout(r, speed + Math.random() * 20)); 
+            }
+            el.innerHTML += '<span class="terminal-cursor"></span>';
+        }
+
+
+        // --- BIOS 风格终端输出系统 ---
+        let typingController = null;
+
+        async function biosAppend(lines){
+            if(typingController){
+                typingController.abort();
+            }
+            typingController = new AbortController();
+            const signal = typingController.signal;
+
+            const terminal = document.getElementById('terminal-content');
+
+            for(const item of lines){
+                if(signal.aborted) return;
+
+                const line = document.createElement('div');
+                terminal.appendChild(line);
+
+                for(const char of item.text){
+                    if(signal.aborted) return;
+                    line.innerHTML += char;
+                    await new Promise(r=>setTimeout(r,18+Math.random()*25));
+                }
+
+                if(item.status){
+                    line.innerHTML += ` <span style="color:#00e676">[${item.status}]</span>`;
+                }
+
+                terminal.scrollTop = terminal.scrollHeight;
+                await new Promise(r=>setTimeout(r,180+Math.random()*220));
+            }
+        }
+
+        // --- 2. 数据准备 ---
+        const originCoords = [114.247, 22.723]; // 深圳龙岗区
+        const rawData = [
+            { name: '张子涵', city: '北京', uni: '清华大学', major: '人工智能', coords: [116.40, 39.90] },
+            { name: '李思源', city: '上海', uni: '复旦大学', major: '微电子', coords: [121.47, 31.23] },
+            { name: '王梓轩', city: '上海', uni: '复旦大学', major: '软件工程', coords: [121.47, 31.23] },
+            { name: '赵佳琪', city: '成都', uni: '四川大学', major: '临床医学', coords: [104.06, 30.67] },
+            { name: '陈浩宇', city: '广州', uni: '中山大学', major: '法学', coords: [113.26, 23.13] },
+            { name: '林星辰', city: '西安', uni: '西安交通大学', major: '能源动力', coords: [108.94, 34.26] }
+        ];
+
+        // 数据聚合
+        const uniGroups = {};
+        rawData.forEach(item => {
+            if (!uniGroups[item.uni]) {
+                uniGroups[item.uni] = { uni: item.uni, city: item.city, coords: item.coords, students: [] };
+            }
+            uniGroups[item.uni].students.push({ name: item.name, major: item.major });
+        });
+
+        const scatterData = Object.values(uniGroups).map(group => ({
+            name: group.uni, value: [...group.coords, group],
+            symbolSize: isMobile ? (8 + group.students.length * 3) : (10 + group.students.length * 4) 
+        }));
+        const linesData = Object.values(uniGroups).map(group => ({ coords: [originCoords, group.coords] }));
+
+        // --- 3. ECharts 实例与分步启动 ---
+        const myChart = echarts.init(document.getElementById('map-container'));
+        
+        // 粒子飞行时间 (毫秒)，严格控制这个时间以达成完美时序
+        const FLIGHT_TIME = 2000; 
+
+        // 初始配置 (锁定缩放，防止加载时用户乱滑导致错位)
+        const baseOption = {
+            backgroundColor: 'transparent',
+            tooltip: { show: false },
+            geo: {
+                map: 'china',
+                roam: false, // 【修复核心】加载阶段禁止拖动和缩放
+                zoom: initZoom,
+                center: initCenter,
+                scaleLimit: { min: 0.5, max: 6 }, // 降低下限，允许用户变得更小
+                itemStyle: {
+                    areaColor: '#0a0d14',
+                    borderColor: 'rgba(255, 176, 0, 0.3)',
+                    borderWidth: 1,
+                    borderType: 'dashed'
+                },
+                emphasis: {
+                    itemStyle: { areaColor: '#1d263b', borderColor: '#ffb000' },
+                    label: { show: false }
+                }
+            },
+            series: []
+        };
+
+        // 启动系统协议
+        async function bootSystem() {
+            await typeWriter('header-text', 'BOOTING ALUMNI_NET...');
+            
+            // 载入地图
+            document.getElementById('map-container').style.opacity = 1;
+            myChart.setOption(baseOption);
+            await typeWriter('header-subtext', 'MAP DATA LOADED.');
+            await new Promise(r => setTimeout(r, 600));
+
+            // 载入龙岗发射源
+            myChart.setOption({
+                series: [{
+                    name: 'Origin', type: 'effectScatter', coordinateSystem: 'geo', zlevel: 3, symbol: 'diamond',
+                    data: [{ name: 'SHENZHEN_LONGGANG', value: originCoords, symbolSize: 16 }],
+                    rippleEffect: { brushType: 'stroke', scale: 5, period: 2 },
+                    itemStyle: { color: '#ffb000', shadowBlur: 15, shadowColor: '#ffb000' }
+                }]
+            });
+            await typeWriter('header-text', '[G2306] CHUANG XIN BASE');
+            await typeWriter('header-subtext', 'LAUNCHING TRACER...');
+            await new Promise(r => setTimeout(r, 600));
+
+            // 发射纯特效彗星粒子 (底线透明，只看到拖尾飞行)
+            myChart.setOption({
+                series: [
+                    ...myChart.getOption().series,
+                    {
+                        name: 'CometEffect',
+                        type: 'lines',
+                        coordinateSystem: 'geo',
+                        zlevel: 1,
+                        effect: { show: true, period: FLIGHT_TIME / 1000, trailLength: 0.6, color: '#00e676', symbolSize: 3 },
+                        // 【拖尾核心】基础线条完全透明，呈现出完美的粒子拖着尾巴飞行的效果
+                        lineStyle: { color: 'rgba(0, 230, 118, 0)', width: 0, curveness: 0.2 },
+                        data: linesData
+                    }
+                ]
+            });
+
+            // 【时序核心】精准等待粒子飞行到达终点 (FLIGHT_TIME)
+            await new Promise(r => setTimeout(r, FLIGHT_TIME));
+
+            // 粒子到达瞬间，目标大学点亮，且加载出底层静态连接线，同时解锁地图自由控制
+            myChart.setOption({
+                geo: { roam: true }, // 解锁用户的缩放与拖拽
+                series: [
+                    ...myChart.getOption().series,
+                    {
+                        // 静态连接底线
+                        name: 'StaticLines', type: 'lines', coordinateSystem: 'geo', zlevel: 0,
+                        lineStyle: { color: 'rgba(0, 230, 118, 0.15)', width: 1, curveness: 0.2, type: 'solid' },
+                        data: linesData
+                    },
+                    {
+                        // 目标大学亮起
+                        name: 'Targets', type: 'effectScatter', coordinateSystem: 'geo', zlevel: 2, symbol: 'circle',
+                        data: scatterData, showEffectOn: 'render',
+                        rippleEffect: { brushType: 'stroke', scale: 3, period: 3 },
+                        itemStyle: { color: '#00e676', shadowBlur: 8, shadowColor: '#00e676' }
+                    }
+                ]
+            });
+            
+            await typeWriter('header-subtext', 'TARGETS LOCKED. SYSTEM READY.');
+            // 显示复位按钮
+            document.getElementById('reset-btn').classList.add('visible');
+        }
+
+        bootSystem();
+
+        // --- 4. 视角恢复系统 (应对移出屏幕外) ---
+        function resetMap() {
+            // 平滑动画重置中心和缩放
+            myChart.setOption({
+                geo: {
+                    zoom: initZoom,
+                    center: initCenter
+                }
+            });
+            closePanel();
+        }
+
+        // --- 5. 交互逻辑：BIOS终端目标解密 ---
+        let currentTarget=null;
+        let clickSession = 0; // 防止快速切换城市时旧动画覆盖新内容
+
+        myChart.on('click', async function(params){
+
+            if(params.seriesName !== 'Targets'){
+                closePanel();
+                return;
+            }
+
+            const session = ++clickSession;
+
+            if(typingController){
+                typingController.abort();
+            }
+
+            const panel=document.getElementById('info-panel');
+            panel.classList.add('active');
+
+            const groupData=params.data.value[2];
+            currentTarget=groupData;
+
+            const terminal=document.getElementById('terminal-content');
+            terminal.innerHTML='';
+
+            const pid=Math.floor(10000+Math.random()*90000);
+
+            const appendSafe = async(lines)=>{
+                if(session !== clickSession) return;
+                await biosAppend(lines);
+            };
+
+            await appendSafe([
+                {text:`> TARGET DECRYPT`,status:'RUNNING'},
+                {text:`> LOCATION : [${groupData.city}]`,status:'FOUND'},
+                {text:`> INSTITUTE: [${groupData.uni}]`,status:'VERIFIED'},
+                {text:'> --------------------------'},
+                {text:`> MATCHES FOUND : ${groupData.students.length}`,status:'READY'}
+            ]);
+
+            for(let i=0;i<groupData.students.length;i++){
+                if(session !== clickSession) return;
+                const stu=groupData.students[i];
+                await appendSafe([
+                    {text:`> SUBJECT [${String(i+1).padStart(2,'0')}] : ${stu.name}`,status:'FOUND'},
+                    {text:`  MAJOR : ${stu.major}`,status:'LOADED'},
+                    {text:'  STATUS : AVAILABLE',status:'READY'}
+                ]);
+            }
+
+            await appendSafe([
+                {text:'> END_OF_FILE.',status:'CLOSED'}
+            ]);
+        });
+
+
+        async function terminalKillSequence(){
+            const pid=Math.floor(10000+Math.random()*90000);
+            const logs=[
+                '[SYS] ABORT_SIGNAL SENT',
+                '[SYS] LOCATING PROCESS...',
+                '[SYS] PROCESS FOUND',
+                `[SYS] KILL PROCESS PID:${pid}`,
+                '[SYS] MEMORY BUFFER PURGED',
+                '[SYS] TARGET_DECRYPT TERMINATED',
+                '[SYS] PANEL CLOSED'
+            ];
+
+            const terminal=document.getElementById('terminal-content');
+            terminal.innerHTML='';
+
+            for(const log of logs){
+                terminal.innerHTML += log+'<br>';
+                console.log(log);
+                await new Promise(r=>setTimeout(r,180));
+            }
+        }
+
+        async function closePanel(){
+            console.log('[SYS] CLOSE REQUEST RECEIVED');
+
+            if(typingController){
+                typingController.abort();
+                typingController=null;
+            }
+
+            await terminalKillSequence();
+
+            const panel=document.getElementById('info-panel');
+            panel.classList.add('closing');
+
+            setTimeout(()=>{
+                panel.classList.remove('active');
+                panel.classList.remove('closing');
+            },300);
+
+            currentTarget=null;
+        }
+
+        myChart.on('click',function(params){
+            if(params.seriesName!=='Targets'){
+                closePanel();
+            }
+        });
+
+        // 窗口大小变化时重绘
+        window.addEventListener('resize', () => { myChart.resize(); });
+    </script>
+</body>
+</html>

@@ -1,0 +1,147 @@
+/* ── 顶部 Header ────────────────────────────────────── */
+#hud-header {
+  position: absolute;
+  top: 20px; left: 20px;
+  z-index: 10;
+  border-left: 3px solid var(--hud-primary);
+  padding-left: 14px;
+  pointer-events: none;
+}
+
+#header-text {
+  font-size: clamp(16px, 2vw, 22px);
+  letter-spacing: 3px;
+  text-shadow: 0 0 8px var(--hud-primary), 0 0 20px rgba(184,255,71,0.3);
+}
+
+#header-subtext {
+  font-size: 11px;
+  color: var(--hud-text-dim);
+  margin-top: 4px;
+  letter-spacing: 1px;
+}
+
+/* 复位按钮 */
+#reset-btn {
+  display: inline-block;
+  font-size: 11px;
+  color: var(--hud-bg);
+  background: var(--hud-primary);
+  padding: 2px 7px;
+  margin-top: 8px;
+  cursor: pointer;
+  font-weight: bold;
+  box-shadow: 0 0 10px rgba(184,255,71,0.5);
+  transition: all 0.2s;
+  pointer-events: auto;
+  opacity: 0; visibility: hidden;
+}
+#reset-btn.visible { opacity: 1; visibility: visible; }
+#reset-btn:hover   { background: #fff; box-shadow: 0 0 14px #fff; }
+
+/* ── 信息面板 ────────────────────────────────────────── */
+#info-panel {
+  position: absolute;
+  bottom: 20px; left: 20px;
+  width: calc(100% - 40px);
+  max-width: 400px;
+  background: var(--hud-panel-bg);
+  backdrop-filter: blur(6px);
+  clip-path: polygon(0 0, calc(100% - 18px) 0, 100% 18px, 100% 100%, 0 100%);
+  border: 1px solid var(--hud-border);
+  box-shadow: inset 0 0 20px rgba(184,255,71,0.06), 0 0 30px rgba(184,255,71,0.08);
+  padding: 18px 22px;
+  opacity: 0; visibility: hidden;
+  transform: translateY(16px);
+  transition: opacity 0.3s ease-out, transform 0.3s ease-out, visibility 0.3s;
+  z-index: 20;
+}
+
+#info-panel.active {
+  opacity: 1; visibility: visible;
+  transform: translateY(0);
+}
+
+.panel-header {
+  font-size: 11px;
+  color: var(--hud-primary);
+  border-bottom: 1px dashed var(--hud-border);
+  padding-bottom: 6px;
+  margin-bottom: 10px;
+  letter-spacing: 1px;
+}
+
+.close-btn {
+  position: absolute;
+  top: 14px; right: 22px;
+  font-size: 14px;
+  color: var(--hud-primary);
+  cursor: pointer;
+  font-weight: bold;
+  letter-spacing: 1px;
+}
+.close-btn:hover { color: var(--hud-danger); }
+
+#terminal-content {
+  font-size: 13px;
+  line-height: 1.65;
+  color: var(--hud-primary);
+  text-shadow: 0 0 6px rgba(184,255,71,0.35);
+  white-space: pre-wrap;
+  min-height: 100px;
+  max-height: 28vh;
+  overflow-y: auto;
+}
+
+/* ── 面板关闭动画 ─────────────────────────────────────── */
+#info-panel.closing {
+  animation: panel-kill 0.3s steps(4) forwards;
+}
+
+@keyframes panel-kill {
+  0%   { filter: brightness(2); opacity: 1; }
+  25%  { filter: brightness(3); opacity: 0.8;
+         clip-path: polygon(0 0, 100% 0, 100% 40%, 0 55%); }
+  60%  { filter: brightness(1.5); opacity: 0.35;
+         clip-path: polygon(0 55%, 100% 45%, 100% 100%, 0 100%); }
+  100% { opacity: 0; filter: brightness(1);
+         clip-path: polygon(0 0, 100% 0, 100% 100%, 0 100%); }
+}
+
+/* ── PC 端面板位置 ────────────────────────────────────── */
+@media (min-width: 768px) {
+  #hud-header { top: 24px; left: 24px; }
+  #header-text { font-size: 22px; }
+
+  #info-panel {
+    bottom: auto;
+    top: 50%;
+    left: calc(100% - 28px);
+    transform: translateY(-50%) translateX(-100%);
+    clip-path: polygon(0 18px, 18px 0, 100% 0, 100% 100%, 0 100%);
+  }
+  #info-panel.active {
+    transform: translateY(-50%) translateX(-100%);
+  }
+  #terminal-content { max-height: 340px; }
+}
+
+/* ── 扫描光柱 ────────────────────────────────────────── */
+.scan-beam {
+  position: fixed;
+  left: 0; width: 100%; height: 3px;
+  background: linear-gradient(90deg,
+    transparent 0%, rgba(184,255,71,0.0) 10%,
+    rgba(184,255,71,0.6) 50%,
+    rgba(184,255,71,0.0) 90%, transparent 100%);
+  pointer-events: none;
+  z-index: 50;
+  animation: scan-sweep 0.6s ease-out forwards;
+}
+
+@keyframes scan-sweep {
+  0%   { opacity: 0; transform: scaleY(1); }
+  15%  { opacity: 1; }
+  70%  { opacity: 0.6; }
+  100% { opacity: 0; transform: scaleY(3); }
+}

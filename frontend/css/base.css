@@ -1,0 +1,79 @@
+:root {
+  --hud-primary:   #b8ff47;
+  --hud-danger:    #ff4b1f;
+  --hud-accent:    #00e5ff;
+  --hud-bg:        #050709;
+  --hud-panel-bg:  rgba(5, 7, 9, 0.92);
+  --hud-grid:      rgba(184, 255, 71, 0.06);
+  --hud-border:    rgba(184, 255, 71, 0.35);
+  --hud-dim:       rgba(184, 255, 71, 0.15);
+  --hud-text-dim:  rgba(184, 255, 71, 0.55);
+  --font-mono:     'Courier New', Courier, Consolas, monospace;
+}
+
+*, *::before, *::after {
+  margin: 0; padding: 0;
+  box-sizing: border-box;
+  font-family: var(--font-mono);
+  text-transform: uppercase;
+}
+
+input[type="password"],
+input#login-username,
+input.hud-input {
+  text-transform: none;
+}
+
+body {
+  background-color: var(--hud-bg);
+  background-image:
+    linear-gradient(var(--hud-grid) 1px, transparent 1px),
+    linear-gradient(90deg, var(--hud-grid) 1px, transparent 1px);
+  background-size: 28px 28px;
+  color: var(--hud-primary);
+  overflow: hidden;
+  width: 100vw;
+  height: 100vh;
+}
+
+/* CRT 特效层 */
+.scanline {
+  position: fixed; inset: 0;
+  background: linear-gradient(to bottom, transparent 50%, rgba(184,255,71,0.03) 51%);
+  background-size: 100% 3px;
+  pointer-events: none;
+  z-index: 997;
+}
+
+.vignette {
+  position: fixed; inset: 0;
+  box-shadow: inset 0 0 180px rgba(0,0,0,0.95);
+  pointer-events: none;
+  z-index: 996;
+}
+
+/* 噪点层 */
+#noise-canvas {
+  position: fixed; inset: 0;
+  pointer-events: none;
+  z-index: 995;
+  opacity: 0.045;
+}
+
+/* 通用滚动条 */
+::-webkit-scrollbar { width: 4px; height: 4px; }
+::-webkit-scrollbar-track { background: transparent; }
+::-webkit-scrollbar-thumb { background: var(--hud-border); }
+
+.terminal-cursor {
+  display: inline-block;
+  width: 9px; height: 15px;
+  background: var(--hud-primary);
+  vertical-align: middle;
+  animation: cur-blink 1s step-end infinite;
+}
+
+@keyframes cur-blink {
+  0%, 100% { opacity: 1; }
+  50%       { opacity: 0; }
+}

@@ -1,0 +1,152 @@
+<!DOCTYPE html>
+<html lang="zh-CN">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>G2306 — SYSTEM PORTAL</title>
+  <link rel="stylesheet" href="css/base.css">
+  <link rel="stylesheet" href="css/portal.css">
+</head>
+<body class="portal-body" style="overflow-y:auto">
+
+  <div class="vignette"></div>
+  <div class="scanline"></div>
+
+  <!-- ── 登录区 ─────────────────────────────────────────── -->
+  <div class="portal-wrap" id="login-wrap">
+    <div class="portal-card">
+      <h2>&gt; G2306 // SYSTEM_PORTAL</h2>
+      <p class="sub">SELECT ACCESS LEVEL AND AUTHENTICATE</p>
+
+      <div class="role-tabs">
+        <button class="role-tab active" data-role="student">[STUDENT_ACCESS]</button>
+        <button class="role-tab" data-role="admin">[ADMIN_ACCESS]</button>
+      </div>
+
+      <div class="field-group">
+        <label class="field-label">&gt; USER_ID</label>
+        <input class="hud-input" id="login-username" autocomplete="username" placeholder="INPUT USERNAME...">
+      </div>
+      <div class="field-group">
+        <label class="field-label">&gt; PASSWORD</label>
+        <input class="hud-input" id="login-password" type="password" autocomplete="current-password" placeholder="INPUT PASSWORD...">
+      </div>
+
+      <button class="hud-btn full" id="login-btn">[AUTHENTICATE]</button>
+      <div class="msg" id="login-msg"></div>
+
+      <div style="margin-top:20px;border-top:1px dashed var(--hud-border);padding-top:14px">
+        <a href="index.html" style="font-size:11px;color:var(--hud-text-dim);text-decoration:none;letter-spacing:1px">
+          &gt; [RETURN TO MAP]
+        </a>
+      </div>
+    </div>
+  </div>
+
+  <!-- ── 已登录后台区 ────────────────────────────────────── -->
+  <div class="portal-wrap" id="portal-wrap" style="display:none">
+    <div id="portal-panel" style="width:100%;max-width:900px">
+      <!-- 顶部导航 -->
+      <div style="display:flex;justify-content:space-between;align-items:center;margin-bottom:24px">
+        <div style="font-size:12px;color:var(--hud-text-dim);letter-spacing:2px">
+          G2306 // SYSTEM PORTAL
+        </div>
+        <div style="display:flex;gap:12px;align-items:center">
+          <a href="index.html" style="font-size:11px;color:var(--hud-text-dim);text-decoration:none;letter-spacing:1px">
+            [MAP]
+          </a>
+          <button class="hud-btn ghost" id="logout-btn" style="padding:4px 10px;font-size:11px">[LOGOUT]</button>
+        </div>
+      </div>
+
+      <!-- 动态内容由 JS 注入 -->
+      <div id="panel-content"></div>
+    </div>
+  </div>
+
+  <script type="module">
+    import { login, getSession, clearSession } from './js/auth.js';
+    import { initStudentPortal } from './js/student-portal.js';
+    import { initAdminPortal }   from './js/admin-portal.js';
+
+    let selectedRole = 'student';
+
+    // Role Tab 切换
+    document.querySelectorAll('.role-tab').forEach(tab => {
+      tab.addEventListener('click', () => {
+        document.querySelectorAll('.role-tab').forEach(t => t.classList.remove('active'));
+        tab.classList.add('active');
+        selectedRole = tab.dataset.role;
+      });
+    });
+
+    // 回车登录
+    ['login-username', 'login-password'].forEach(id => {
+      document.getElementById(id).addEventListener('keydown', e => {
+        if (e.key === 'Enter') document.getElementById('login-btn').click();
+      });
+    });
+
+    // 登录
+    document.getElementById('login-btn').addEventListener('click', async () => {
+      const username = document.getElementById('login-username').value.trim();
+      const password = document.getElementById('login-password').value;
+      const msg      = document.getElementById('login-msg');
+      const btn      = document.getElementById('login-btn');
+
+      if (!username || !password) {
+        msg.textContent = '> [ERR] USERNAME AND PASSWORD REQUIRED';
+        msg.className = 'msg err';
+        return;
+      }
+
+      btn.disabled    = true;
+      btn.textContent = '[AUTHENTICATING...]';
+      msg.textContent = '';
+
+      try {
+        const data = await login(username, password);
+
+        // 角色检查
+        if (selectedRole === 'admin' && !data.isAdmin) {
+          clearSession();
+          msg.textContent = '> [ERR] INSUFFICIENT PRIVILEGES FOR ADMIN ACCESS';
+          msg.className = 'msg err';
+          btn.disabled = false; btn.textContent = '[AUTHENTICATE]';
+          return;
+        }
+
+        await enterPortal(data.isAdmin);
+      } catch(e) {
+        msg.textContent = `> [ERR] ${e.message.toUpperCase()}`;
+        msg.className = 'msg err';
+        btn.disabled = false; btn.textContent = '[AUTHENTICATE]';
+      }
+    });
+
+    // 登出
+    document.getElementById('logout-btn').addEventListener('click', () => {
+      clearSession();
+      document.getElementById('portal-wrap').style.display = 'none';
+      document.getElementById('login-wrap').style.display  = 'flex';
+      document.getElementById('login-password').value = '';
+      document.getElementById('login-msg').textContent = '';
+    });
+
+    async function enterPortal(isAdmin) {
+      document.getElementById('login-wrap').style.display  = 'none';
+      document.getElementById('portal-wrap').style.display = 'flex';
+      document.getElementById('login-btn').disabled    = false;
+      document.getElementById('login-btn').textContent = '[AUTHENTICATE]';
+
+      const content = document.getElementById('panel-content');
+      if (isAdmin) await initAdminPortal(content);
+      else         await initStudentPortal(content);
+    }
+
+    // 已有 session 则自动进入
+    const session = getSession();
+    if (session) enterPortal(session.isAdmin);
+  </script>
+</body>
+</html>

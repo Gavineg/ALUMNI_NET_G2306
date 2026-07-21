@@ -1,0 +1,161 @@
+<!DOCTYPE html>
+<html lang="zh-CN">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1.0, user-scalable=no">
+  <title>G2306 蹭饭图 — FLAGSHIP TERMINAL</title>
+  <script src="https://cdn.jsdelivr.net/npm/echarts@5.4.3/dist/echarts.min.js"></script>
+  <script src="https://registry.npmmirror.com/echarts/4.9.0/files/map/js/china.js"></script>
+  <link rel="stylesheet" href="css/base.css">
+  <link rel="stylesheet" href="css/terminal.css">
+</head>
+<body>
+
+  <canvas id="noise-canvas"></canvas>
+  <div class="vignette"></div>
+  <div class="scanline"></div>
+
+  <header id="hud-header">
+    <h1 id="header-text"></h1>
+    <p  id="header-subtext"></p>
+    <div id="reset-btn" onclick="resetMap()">[SYS.RESTORE_VIEW]</div>
+  </header>
+
+  <div id="map-container" style="width:100%;height:100%;opacity:0;transition:opacity 1s ease-in;"></div>
+
+  <div id="info-panel">
+    <span class="close-btn" id="close-btn">[ABORT]</span>
+    <div class="panel-header">&gt; SYS.TARGET_DECRYPT //</div>
+    <div id="terminal-content"></div>
+  </div>
+
+  <script type="module">
+    import { FLIGHT_TIME, NODE_DELAY } from './js/config.js';
+    import { glitchResolve, typeWrite, sleep } from './js/boot.js';
+    import { fetchMapData } from './js/map-data.js';
+    import { launchParticles, revealTargets, startNoiseLayer } from './js/map-particles.js';
+    import { initMapUI, closePanel } from './js/map-ui.js';
+
+    const isMobile    = window.innerWidth < 768;
+    const initZoom    = isMobile ? 1.8 : 1.2;
+    const initCenter  = isMobile ? [105.0, 32.0] : [104.2, 35.9];
+
+    const chart       = echarts.init(document.getElementById('map-container'));
+    const headerEl    = document.getElementById('header-text');
+    const subEl       = document.getElementById('header-subtext');
+
+    // 噪点层启动
+    startNoiseLayer();
+
+    // 地图基础配置
+    function baseGeoOption(roam = false) {
+      return {
+        backgroundColor: 'transparent',
+        tooltip: { show: false },
+        geo: {
+          map: 'china', roam,
+          zoom: initZoom, center: initCenter,
+          scaleLimit: { min: 0.4, max: 8 },
+          itemStyle: {
+            areaColor: '#060a0f',
+            borderColor: 'rgba(184,255,71,0.22)',
+            borderWidth: 0.8,
+            borderType: 'dashed'
+          },
+          emphasis: {
+            itemStyle: { areaColor: '#0e1520', borderColor: '#b8ff47' },
+            label: { show: false }
+          }
+        },
+        series: []
+      };
+    }
+
+    async function boot() {
+      // 乱码启动
+      await glitchResolve(headerEl, 'BOOTING ALUMNI_NET...', 350, 36);
+      await typeWrite(subEl, 'INITIALIZING MAP MODULE...', 24);
+
+      // 地图显示
+      document.getElementById('map-container').style.opacity = '1';
+      chart.setOption(baseGeoOption(false));
+
+      // 拉取数据
+      subEl.textContent = '';
+      await typeWrite(subEl, 'FETCHING TARGET DATA...', 24);
+      const mapData = await fetchMapData().catch(() => null);
+
+      if (!mapData) {
+        subEl.textContent = '';
+        await typeWrite(subEl, '[ERR] NETWORK FAULT — USING DEMO DATA', 22);
+        // 降级示例数据
+        return bootDemo();
+      }
+
+      await glitchResolve(headerEl, '[G2306] CHUANG XIN BASE', 280, 34);
+      subEl.textContent = '';
+      await typeWrite(subEl, 'LAUNCHING TRACER SWARM...', 22);
+
+      launchParticles(chart, mapData.originCoords, mapData.linesData, FLIGHT_TIME);
+
+      await sleep(FLIGHT_TIME + 200);
+
+      // 解锁地图
+      chart.setOption({ geo: { roam: true } });
+
+      subEl.textContent = '';
+      await typeWrite(subEl, 'SIGNAL LOCKING TARGETS...', 22);
+
+      await revealTargets(chart, mapData.scatterData, mapData.linesData, mapData.colorMode);
+
+      subEl.textContent = '';
+      await typeWrite(subEl, 'ALL TARGETS LOCKED. SYSTEM READY.', 22);
+      document.getElementById('reset-btn').classList.add('visible');
+
+      initMapUI(chart);
+    }
+
+    // 降级演示数据（无 API 时使用）
+    async function bootDemo() {
+      await glitchResolve(headerEl, '[G2306] CHUANG XIN BASE', 280, 34);
+      subEl.textContent = '';
+      await typeWrite(subEl, 'LAUNCHING TRACER SWARM... [DEMO MODE]', 22);
+
+      const originCoords = [114.247, 22.723];
+      const demoUnis = [
+        { university:'清华大学', city:'北京', longitude:116.40, latitude:39.90, members:[{name:'张子涵',major:'人工智能',canCengfan:true,status:'欢迎来蹭'}] },
+        { university:'复旦大学', city:'上海', longitude:121.47, latitude:31.23, members:[{name:'李思源',major:'微电子',canCengfan:false,status:''}] },
+        { university:'四川大学', city:'成都', longitude:104.06, latitude:30.67, members:[{name:'赵佳琪',major:'临床医学',canCengfan:true,status:''}] },
+        { university:'中山大学', city:'广州', longitude:113.26, latitude:23.13, members:[{name:'陈浩宇',major:'法学',canCengfan:true,status:''}] },
+        { university:'西安交通大学', city:'西安', longitude:108.94, latitude:34.26, members:[{name:'林星辰',major:'能源动力',canCengfan:false,status:''}] }
+      ];
+
+      const scatterData = demoUnis.map(u => ({
+        name: u.university, value: [u.longitude, u.latitude, u],
+        nodeColor: '#b8ff47', canCengfan: u.members.some(m => m.canCengfan)
+      }));
+      scatterData.sort((a,b) => Math.hypot(a.value[0]-originCoords[0],a.value[1]-originCoords[1]) - Math.hypot(b.value[0]-originCoords[0],b.value[1]-originCoords[1]));
+
+      const linesData = demoUnis.map(u => ({ coords:[originCoords,[u.longitude,u.latitude]], nodeColor:'#b8ff47' }));
+
+      chart.setOption({ geo: { roam: false } });
+      launchParticles(chart, originCoords, linesData, FLIGHT_TIME);
+      await sleep(FLIGHT_TIME + 200);
+      chart.setOption({ geo: { roam: true } });
+      await revealTargets(chart, scatterData, linesData, 'unified');
+      document.getElementById('reset-btn').classList.add('visible');
+      initMapUI(chart);
+    }
+
+    boot();
+
+    window.resetMap = function() {
+      chart.setOption({ geo: { zoom: initZoom, center: initCenter } });
+      closePanel();
+    };
+
+    document.getElementById('close-btn').addEventListener('click', closePanel);
+    window.addEventListener('resize', () => chart.resize());
+  </script>
+</body>
+</html>
