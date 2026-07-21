@@ -112,7 +112,7 @@
       await typeWrite(subEl, 'ALL TARGETS LOCKED. SYSTEM READY.', 22);
       document.getElementById('reset-btn').classList.add('visible');
 
-      initMapUI(chart);
+      initMapUI(chart, initZoom, initCenter);
     }
 
     // 降级演示数据（无 API 时使用）
@@ -144,7 +144,7 @@
       chart.setOption({ geo: { roam: true } });
       await revealTargets(chart, scatterData, linesData, 'unified');
       document.getElementById('reset-btn').classList.add('visible');
-      initMapUI(chart);
+      initMapUI(chart, initZoom, initCenter);
     }
 
     boot();
