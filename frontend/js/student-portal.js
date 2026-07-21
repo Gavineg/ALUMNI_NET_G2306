@@ -22,6 +22,17 @@ export async function initStudentPortal(container) {
         <div class="coord-display" id="s-coord"></div>
       </div>
 
+      <div style="display:flex;gap:8px">
+        <div class="field-group" style="flex:1">
+          <label class="field-label">&gt; LONGITUDE</label>
+          <input class="hud-input" id="s-lon" placeholder="E.G. 116.40">
+        </div>
+        <div class="field-group" style="flex:1">
+          <label class="field-label">&gt; LATITUDE</label>
+          <input class="hud-input" id="s-lat" placeholder="E.G. 39.90">
+        </div>
+      </div>
+
       <div class="field-group">
         <label class="field-label">&gt; MAJOR</label>
         <input class="hud-input" id="s-major" placeholder="INPUT MAJOR...">
@@ -77,6 +88,8 @@ async function loadProfile(container) {
   container.querySelector('#s-status').value = profile.status_text || '';
   updateCharCount(container, profile.status_text || '');
   updateCoordDisplay(container, profile.longitude, profile.latitude, profile.city);
+  if (profile.longitude) container.querySelector('#s-lon').value = profile.longitude;
+  if (profile.latitude)  container.querySelector('#s-lat').value = profile.latitude;
   setCengfan(container, !!profile.can_cengfan);
 }
 
@@ -144,8 +157,8 @@ function bindStudentEvents(container) {
       university:  container.querySelector('#s-uni').value.trim(),
       major:       container.querySelector('#s-major').value.trim(),
       city:        profile.city      || null,
-      longitude:   profile.longitude || null,
-      latitude:    profile.latitude  || null,
+      longitude:   parseFloat(container.querySelector('#s-lon').value) || profile.longitude || null,
+      latitude:    parseFloat(container.querySelector('#s-lat').value) || profile.latitude  || null,
       status_text: container.querySelector('#s-status').value.trim(),
       can_cengfan: profile.can_cengfan
     };
