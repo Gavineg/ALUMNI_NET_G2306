@@ -16,7 +16,7 @@ let initCenterRef  = null;
 
 const ZOOM_PROVINCE  = 8;    // 省级缩放值
 const CLUSTER_THRESH = 3;    // 屏幕像素距离阈值（度）
-const AUTO_RESET_MS  = 5000; // 无操作 5 秒退回全国
+const AUTO_RESET_MS  = 8000; // 无操作 8 秒退回全国
 
 export function initMapUI(chart, initZoom, initCenter) {
   chartRef      = chart;

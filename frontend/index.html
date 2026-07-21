@@ -73,7 +73,7 @@
 
     async function boot() {
       // 乱码启动
-      await glitchResolve(headerEl, 'BOOTING ALUMNI_NET...', 250, 24);
+      await glitchResolve(headerEl, 'BOOTING ALUMNI_NET...', 220, 24);
       await typeWrite(subEl, 'INITIALIZING MAP MODULE...', 18);
 
       // 地图显示
@@ -82,7 +82,7 @@
 
       // 拉取数据
       subEl.textContent = '';
-      await typeWrite(subEl, 'FETCHING TARGET DATA...', 24);
+      await typeWrite(subEl, 'FETCHING TARGET DATA...', 18);
       const mapData = await fetchMapData().catch(() => null);
 
       if (!mapData) {
@@ -92,9 +92,9 @@
         return bootDemo();
       }
 
-      await glitchResolve(headerEl, '[G2306] CHUANG XIN BASE', 280, 34);
+      await glitchResolve(headerEl, '[G2306] CHUANG XIN BASE', 220, 24);
       subEl.textContent = '';
-      await typeWrite(subEl, 'LAUNCHING TRACER SWARM...', 22);
+      await typeWrite(subEl, 'LAUNCHING TRACER SWARM...', 18);
 
       launchParticles(chart, mapData.originCoords, mapData.linesData, FLIGHT_TIME);
 
@@ -104,12 +104,12 @@
       chart.setOption({ geo: { roam: true } });
 
       subEl.textContent = '';
-      await typeWrite(subEl, 'SIGNAL LOCKING TARGETS...', 22);
+      await typeWrite(subEl, 'SIGNAL LOCKING TARGETS...', 18);
 
       await revealTargets(chart, mapData.scatterData, mapData.linesData, mapData.colorMode);
 
       subEl.textContent = '';
-      await typeWrite(subEl, 'ALL TARGETS LOCKED. SYSTEM READY.', 22);
+      await typeWrite(subEl, 'ALL TARGETS LOCKED. SYSTEM READY.', 16);
       document.getElementById('reset-btn').classList.add('visible');
 
       initMapUI(chart, initZoom, initCenter);
