@@ -25,11 +25,11 @@ export function launchParticles(chart, originCoords, linesData, flightTime) {
       coordinateSystem: 'geo',
       zlevel: 4,
       symbol: DIAMOND_PATH,
-      symbolSize: 18,
+      symbolSize: 12,
       data: [{ name: 'ORIGIN', value: originCoords }],
       showEffectOn: 'render',
-      rippleEffect: { brushType: 'stroke', scale: 4, period: 2.5 },
-      itemStyle: { color: '#ff4b1f', shadowBlur: 20, shadowColor: '#ff4b1f' },
+      rippleEffect: { brushType: 'stroke', scale: 2, period: 2.5 },
+      itemStyle: { color: '#ff4b1f', shadowBlur: 15, shadowColor: '#ff4b1f' },
       label: { show: false }
     }]
   });
