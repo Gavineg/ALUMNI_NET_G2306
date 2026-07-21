@@ -80,16 +80,22 @@
       document.getElementById('map-container').style.opacity = '1';
       chart.setOption(baseGeoOption(false));
 
-      // 拉取数据
+      // 拉取数据，失败则自动重连
       subEl.textContent = '';
       await typeWrite(subEl, 'FETCHING TARGET DATA...', 18);
-      const mapData = await fetchMapData().catch(() => null);
 
-      if (!mapData) {
-        subEl.textContent = '';
-        await typeWrite(subEl, '[ERR] NETWORK FAULT — USING DEMO DATA', 22);
-        // 降级示例数据
-        return bootDemo();
+      let mapData = null;
+      let retryCount = 0;
+      while (!mapData) {
+        mapData = await fetchMapData().catch(() => null);
+        if (!mapData) {
+          retryCount++;
+          subEl.textContent = '';
+          await typeWrite(subEl, `[ERR] API FAULT — RETRY ${retryCount} IN 2S...`, 18);
+          await sleep(2000);
+          subEl.textContent = '';
+          await typeWrite(subEl, 'RECONNECTING...', 18);
+        }
       }
 
       await glitchResolve(headerEl, '[G2306] CHUANG XIN BASE', 220, 24);

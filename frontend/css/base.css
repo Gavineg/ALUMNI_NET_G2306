@@ -20,7 +20,8 @@
 
 input[type="password"],
 input#login-username,
-input.hud-input {
+input.hud-input,
+textarea.hud-input {
   text-transform: none;
 }
 
