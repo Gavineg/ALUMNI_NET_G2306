@@ -101,7 +101,11 @@ export async function revealTargets(chart, scatterData, linesData, colorMode) {
   // 逐个渐显（近→远）
   for (let i = 0; i < scatterData.length; i++) {
     const node = scatterData[i];
-    const size = 6 + node.value[2].members.length * 2;
+    const cluster = node.value[2];
+    const memberCount = cluster.universities
+      ? cluster.universities.reduce((s, u) => s + (u.members?.length || 0), 0)
+      : (cluster.members?.length || 1);
+    const size = 6 + memberCount * 2;
 
     chart.setOption({
       series: [{
