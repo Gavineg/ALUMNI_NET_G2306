@@ -14,7 +14,7 @@ let chartRef       = null;
 let initZoomRef    = null;
 let initCenterRef  = null;
 
-const ZOOM_PROVINCE  = 5;    // 省级缩放值
+const ZOOM_PROVINCE  = 8;    // 省级缩放值
 const CLUSTER_THRESH = 3;    // 屏幕像素距离阈值（度）
 const AUTO_RESET_MS  = 5000; // 无操作 5 秒退回全国
 
