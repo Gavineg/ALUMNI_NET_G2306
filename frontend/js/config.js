@@ -3,5 +3,5 @@
 export const API_BASE = window.location.hostname === 'localhost' || window.location.hostname === '127.0.0.1'
   ? 'http://localhost:8787'
   : '';
-export const FLIGHT_TIME = 2200; // 彗星粒子飞行时长（ms）
-export const NODE_DELAY  = 180;  // 目标节点逐个出现间隔（ms）
+export const FLIGHT_TIME = 1200; // 彗星粒子飞行时长（ms）
+export const NODE_DELAY  = 100;  // 目标节点逐个出现间隔（ms）

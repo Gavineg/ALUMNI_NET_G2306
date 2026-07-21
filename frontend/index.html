@@ -73,8 +73,8 @@
 
     async function boot() {
       // 乱码启动
-      await glitchResolve(headerEl, 'BOOTING ALUMNI_NET...', 350, 36);
-      await typeWrite(subEl, 'INITIALIZING MAP MODULE...', 24);
+      await glitchResolve(headerEl, 'BOOTING ALUMNI_NET...', 250, 24);
+      await typeWrite(subEl, 'INITIALIZING MAP MODULE...', 18);
 
       // 地图显示
       document.getElementById('map-container').style.opacity = '1';
@@ -123,11 +123,11 @@
 
       const originCoords = [114.247, 22.723];
       const demoUnis = [
-        { university:'清华大学', city:'北京', longitude:116.40, latitude:39.90, members:[{name:'张子涵',major:'人工智能',canCengfan:true,status:'欢迎来蹭'}] },
-        { university:'复旦大学', city:'上海', longitude:121.47, latitude:31.23, members:[{name:'李思源',major:'微电子',canCengfan:false,status:''}] },
-        { university:'四川大学', city:'成都', longitude:104.06, latitude:30.67, members:[{name:'赵佳琪',major:'临床医学',canCengfan:true,status:''}] },
-        { university:'中山大学', city:'广州', longitude:113.26, latitude:23.13, members:[{name:'陈浩宇',major:'法学',canCengfan:true,status:''}] },
-        { university:'西安交通大学', city:'西安', longitude:108.94, latitude:34.26, members:[{name:'林星辰',major:'能源动力',canCengfan:false,status:''}] }
+        { university:'NaN', city:'NaN', longitude:116.40, latitude:39.90, members:[{name:'NaN',major:'NaN',canCengfan:true,status:''}] },
+        { university:'NaN', city:'NaN', longitude:121.47, latitude:31.23, members:[{name:'NaN',major:'NaN',canCengfan:false,status:''}] },
+        { university:'NaN', city:'NaN', longitude:104.06, latitude:30.67, members:[{name:'NaN',major:'NaN',canCengfan:true,status:''}] },
+        { university:'NaN', city:'NaN', longitude:113.26, latitude:23.13, members:[{name:'NaN',major:'NaN',canCengfan:true,status:''}] },
+        { university:'NaN', city:'NaN', longitude:108.94, latitude:34.26, members:[{name:'NaN',major:'NaN',canCengfan:false,status:''}] }
       ];
 
       const scatterData = demoUnis.map(u => ({
