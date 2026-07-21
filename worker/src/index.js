@@ -93,6 +93,27 @@ export default {
       if (method === 'PUT') return addCors(await updateMe(user.sub, request, env.DB));
     }
 
+    if (path === '/api/student/password' && method === 'PUT') {
+      if (!user) return json({ error: 'unauthorized' }, 401);
+      const { old_password, new_password } = await request.json().catch(() => ({}));
+      if (!old_password || !new_password) return json({ error: 'missing fields' }, 400);
+      if (new_password.length < 6) return json({ error: 'password too short' }, 400);
+
+      const row = await env.DB.prepare(
+        'SELECT password_hash, salt FROM students WHERE id = ?'
+      ).bind(user.sub).first();
+
+      if (!row || !(await verifyPassword(old_password, row.password_hash, row.salt))) {
+        return json({ error: 'current password incorrect' }, 401);
+      }
+
+      const { hash, salt } = await hashPassword(new_password);
+      await env.DB.prepare(
+        "UPDATE students SET password_hash=?, salt=?, updated_at=datetime('now') WHERE id=?"
+      ).bind(hash, salt, user.sub).run();
+      return json({ ok: true });
+    }
+
     // ── Admin guard ────────────────────────────────────────────
     if (path.startsWith('/api/admin/')) {
       if (!user?.admin) return json({ error: 'forbidden' }, 403);

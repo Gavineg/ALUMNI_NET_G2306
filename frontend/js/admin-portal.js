@@ -12,6 +12,7 @@ export async function initAdminPortal(container) {
       <button class="panel-tab active" data-tab="students">[STUDENTS]</button>
       <button class="panel-tab" data-tab="banned">[BANNED_WORDS]</button>
       <button class="panel-tab" data-tab="settings">[MAP_SETTINGS]</button>
+      <button class="panel-tab" data-tab="password">[CHANGE_PASSWORD]</button>
     </div>
     <div id="admin-tab-content"></div>
 
@@ -36,6 +37,7 @@ async function renderTab(container, tab) {
   if (tab === 'students')  await renderStudents(content, container);
   if (tab === 'banned')    await renderBanned(content);
   if (tab === 'settings')  await renderSettings(content);
+  if (tab === 'password')  renderChangePassword(content);
 }
 
 // ── Students tab ────────────────────────────────────────────
@@ -397,5 +399,69 @@ async function renderSettings(content) {
     const msg = content.querySelector('#cfg-msg');
     if (res.ok) { msg.textContent = '> SETTINGS SAVED [OK]'; msg.className = 'msg ok'; }
     else        { msg.textContent = '> [ERR] SAVE FAILED';   msg.className = 'msg err'; }
+  });
+}
+
+// ── Change Password tab ───────────────────────────────────────
+
+function renderChangePassword(content) {
+  content.innerHTML = `
+    <div class="portal-card" style="max-width:480px">
+      <div class="field-group">
+        <label class="field-label">&gt; CURRENT_PASSWORD</label>
+        <input class="hud-input" type="password" id="ap-old-pw" placeholder="INPUT CURRENT PASSWORD...">
+      </div>
+      <div class="field-group">
+        <label class="field-label">&gt; NEW_PASSWORD</label>
+        <input class="hud-input" type="password" id="ap-new-pw" placeholder="INPUT NEW PASSWORD...">
+      </div>
+      <div class="field-group">
+        <label class="field-label">&gt; CONFIRM_PASSWORD</label>
+        <input class="hud-input" type="password" id="ap-confirm-pw" placeholder="CONFIRM NEW PASSWORD...">
+      </div>
+      <button class="hud-btn full" id="ap-pw-btn">[UPDATE_PASSWORD]</button>
+      <div class="msg" id="ap-pw-msg"></div>
+    </div>
+  `;
+
+  content.querySelector('#ap-pw-btn').addEventListener('click', async () => {
+    const oldPw     = content.querySelector('#ap-old-pw').value;
+    const newPw     = content.querySelector('#ap-new-pw').value;
+    const confirmPw = content.querySelector('#ap-confirm-pw').value;
+    const msg       = content.querySelector('#ap-pw-msg');
+    const btn       = content.querySelector('#ap-pw-btn');
+
+    if (!oldPw || !newPw || !confirmPw) {
+      msg.textContent = '> [ERR] ALL FIELDS REQUIRED'; msg.className = 'msg err'; return;
+    }
+    if (newPw !== confirmPw) {
+      msg.textContent = '> [ERR] PASSWORDS DO NOT MATCH'; msg.className = 'msg err'; return;
+    }
+    if (newPw.length < 6) {
+      msg.textContent = '> [ERR] PASSWORD TOO SHORT (MIN 6)'; msg.className = 'msg err'; return;
+    }
+
+    btn.disabled = true; btn.textContent = '[UPDATING...]';
+    try {
+      const res = await apiFetch('/api/student/password', {
+        method: 'PUT',
+        body: JSON.stringify({ old_password: oldPw, new_password: newPw })
+      });
+      if (res.ok) {
+        msg.textContent = '> PASSWORD UPDATED — LOGGING OUT...'; msg.className = 'msg ok';
+        setTimeout(() => {
+          localStorage.removeItem('g2306_token');
+          localStorage.removeItem('g2306_user');
+          location.reload();
+        }, 1500);
+      } else {
+        const d = await res.json();
+        msg.textContent = `> [ERR] ${d.error}`; msg.className = 'msg err';
+        btn.disabled = false; btn.textContent = '[UPDATE_PASSWORD]';
+      }
+    } catch {
+      msg.textContent = '> [ERR] REQUEST FAILED'; msg.className = 'msg err';
+      btn.disabled = false; btn.textContent = '[UPDATE_PASSWORD]';
+    }
   });
 }

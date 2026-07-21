@@ -42,6 +42,24 @@ export async function initStudentPortal(container) {
 
       <button class="hud-btn full" id="s-save-btn">[SAVE_CHANGES]</button>
       <div class="msg" id="s-msg"></div>
+
+      <div style="border-top:1px dashed var(--hud-border);padding-top:18px;margin-top:18px">
+        <div style="font-size:11px;color:var(--hud-text-dim);letter-spacing:2px;margin-bottom:14px">&gt; CHANGE_PASSWORD</div>
+        <div class="field-group">
+          <label class="field-label">&gt; CURRENT_PASSWORD</label>
+          <input class="hud-input" type="password" id="s-old-pw" placeholder="INPUT CURRENT PASSWORD...">
+        </div>
+        <div class="field-group">
+          <label class="field-label">&gt; NEW_PASSWORD</label>
+          <input class="hud-input" type="password" id="s-new-pw" placeholder="INPUT NEW PASSWORD...">
+        </div>
+        <div class="field-group">
+          <label class="field-label">&gt; CONFIRM_PASSWORD</label>
+          <input class="hud-input" type="password" id="s-confirm-pw" placeholder="CONFIRM NEW PASSWORD...">
+        </div>
+        <button class="hud-btn full ghost" id="s-pw-btn">[UPDATE_PASSWORD]</button>
+        <div class="msg" id="s-pw-msg"></div>
+      </div>
     </div>
   `;
 
@@ -147,5 +165,46 @@ function bindStudentEvents(container) {
     }
     btn.disabled = false;
     btn.textContent = '[SAVE_CHANGES]';
+  });
+
+  container.querySelector('#s-pw-btn').addEventListener('click', async () => {
+    const oldPw    = container.querySelector('#s-old-pw').value;
+    const newPw    = container.querySelector('#s-new-pw').value;
+    const confirmPw = container.querySelector('#s-confirm-pw').value;
+    const pwMsg    = container.querySelector('#s-pw-msg');
+    const btn      = container.querySelector('#s-pw-btn');
+
+    if (!oldPw || !newPw || !confirmPw) {
+      pwMsg.textContent = '> [ERR] ALL FIELDS REQUIRED'; pwMsg.className = 'msg err'; return;
+    }
+    if (newPw !== confirmPw) {
+      pwMsg.textContent = '> [ERR] PASSWORDS DO NOT MATCH'; pwMsg.className = 'msg err'; return;
+    }
+    if (newPw.length < 6) {
+      pwMsg.textContent = '> [ERR] PASSWORD TOO SHORT (MIN 6)'; pwMsg.className = 'msg err'; return;
+    }
+
+    btn.disabled = true; btn.textContent = '[UPDATING...]';
+    try {
+      const res = await apiFetch('/api/student/password', {
+        method: 'PUT',
+        body: JSON.stringify({ old_password: oldPw, new_password: newPw })
+      });
+      if (res.ok) {
+        pwMsg.textContent = '> PASSWORD UPDATED — LOGGING OUT...'; pwMsg.className = 'msg ok';
+        setTimeout(() => {
+          localStorage.removeItem('g2306_token');
+          localStorage.removeItem('g2306_user');
+          location.reload();
+        }, 1500);
+      } else {
+        const d = await res.json();
+        pwMsg.textContent = `> [ERR] ${d.error}`; pwMsg.className = 'msg err';
+        btn.disabled = false; btn.textContent = '[UPDATE_PASSWORD]';
+      }
+    } catch {
+      pwMsg.textContent = '> [ERR] REQUEST FAILED'; pwMsg.className = 'msg err';
+      btn.disabled = false; btn.textContent = '[UPDATE_PASSWORD]';
+    }
   });
 }
