@@ -4,7 +4,7 @@ import { API_BASE } from './config.js';
  * 从 Worker 拉取地图数据，构建 ECharts 所需的 series 数据。
  * 距离小于 CLUSTER_DEG 的大学聚合成一个省级点。
  */
-const CLUSTER_DEG = 1.0; // 经纬度距离阈值，约 300km
+const CLUSTER_DEG = 1.8; // 经纬度距离阈值，约 300km
 
 export async function fetchMapData() {
   const controller = new AbortController();

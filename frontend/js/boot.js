@@ -15,7 +15,7 @@ function randChar() {
  * @param {number} glitchMs   乱码阶段持续时间
  * @param {number} resolveMs  每字母稳定延迟
  */
-export async function glitchResolve(el, target, glitchMs = 320, resolveMs = 38) {
+export async function glitchResolve(el, target, glitchMs = 280, resolveMs = 38) {
   // 乱码阶段
   const arr   = target.split('').map(() => randChar());
   const ticks = Math.floor(glitchMs / 40);
@@ -36,7 +36,7 @@ export async function glitchResolve(el, target, glitchMs = 320, resolveMs = 38) 
 /**
  * 普通打字机（用于子标题等辅助文字）
  */
-export async function typeWrite(el, text, speed = 28) {
+export async function typeWrite(el, text, speed = 32) {
   el.textContent = '';
   for (const char of text) {
     el.textContent += char;
