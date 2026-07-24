@@ -4,7 +4,7 @@ import { filterText, listBannedWords, addBannedWord, deleteBannedWord } from './
 import {
   mapData, getMe, updateMe,
   adminListStudents, adminCreateStudent, adminUpdateStudent, adminDeleteStudent,
-  getSettings, updateSettings
+  getSettings, updateSettings, hackServers, hackLoot
 } from './students.js';
 import { FirestoreDB } from './firestore.js';
 
@@ -71,6 +71,15 @@ export default {
     // ── Public ────────────────────────────────────────────────
     if (path === '/api/map/data' && method === 'GET') {
       return addCors(await mapData(db));
+    }
+
+    if (path === '/api/hack/servers' && method === 'GET') {
+      return addCors(await hackServers(db));
+    }
+
+    const lootMatch = path.match(/^\/api\/hack\/loot\/([^/]+)$/);
+    if (lootMatch && method === 'GET') {
+      return addCors(await hackLoot(lootMatch[1], db));
     }
 
     if (path === '/api/auth/login' && method === 'POST') {

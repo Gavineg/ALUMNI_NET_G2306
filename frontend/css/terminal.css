@@ -169,6 +169,25 @@
          clip-path: polygon(0 0, 100% 0, 100% 100%, 0 100%); }
 }
 
+/* ── 全屏终端模式（ROSTER 命令） ─────────────────────── */
+#info-panel.fullscreen {
+  position: fixed !important;
+  inset: 0 !important;
+  max-width: 100% !important;
+  max-height: 100% !important;
+  width: 100% !important;
+  top: 0 !important; left: 0 !important;
+  transform: none !important;
+  clip-path: none !important;
+  z-index: 100;
+  padding: 30px 40px;
+}
+#info-panel.fullscreen .panel-header,
+#info-panel.fullscreen .close-btn { display: none; }
+#info-panel.fullscreen #terminal-content {
+  max-height: calc(100vh - 80px);
+}
+
 /* ── PC 端面板位置 ────────────────────────────────────── */
 @media (min-width: 768px) {
   #hud-header { top: 24px; left: 24px; }

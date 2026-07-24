@@ -63,9 +63,10 @@ export async function mapData(db) {
 export async function getMe(userId, db) {
   const doc = await db.get('students', userId);
   if (!doc) return json({ error: 'not found' }, 404);
-  // 只返回安全字段
-  const { id, username, display_name, university, major, city, longitude, latitude, status_text, can_cengfan } = doc;
-  return json({ id, username, display_name, university, major, city, longitude, latitude, status_text, can_cengfan });
+  const { id, username, display_name, university, major, city, longitude, latitude, status_text, can_cengfan,
+          server_hostname, server_ip, server_theme, server_difficulty, server_ports, hack_loot } = doc;
+  return json({ id, username, display_name, university, major, city, longitude, latitude, status_text, can_cengfan,
+                server_hostname, server_ip, server_theme, server_difficulty, server_ports, hack_loot });
 }
 
 // PUT /api/student/me
@@ -73,12 +74,22 @@ export async function updateMe(userId, request, db) {
   const body = await request.json().catch(() => null);
   if (!body) return json({ error: 'invalid json' }, 400);
 
-  const allowed = ['university', 'major', 'city', 'longitude', 'latitude', 'status_text', 'can_cengfan'];
+  const allowed = ['university', 'major', 'city', 'longitude', 'latitude', 'status_text', 'can_cengfan',
+                   'server_hostname', 'server_theme', 'server_difficulty', 'server_ports', 'hack_loot'];
   const update = {};
 
   for (const k of allowed) {
     if (k in body) {
-      update[k] = k === 'status_text' ? await filterText(body[k], db) : body[k];
+      if (k === 'status_text') {
+        update[k] = await filterText(body[k], db);
+      } else if (k === 'hack_loot') {
+        update[k] = String(body[k] ?? '').slice(0, 500);
+      } else if (k === 'server_hostname') {
+        // Basic sanitize: lowercase alphanumeric + hyphens only
+        update[k] = String(body[k] ?? '').toLowerCase().replace(/[^a-z0-9-]/g, '-').slice(0, 32) || null;
+      } else {
+        update[k] = body[k];
+      }
     }
   }
   if (!Object.keys(update).length) return json({ error: 'nothing to update' }, 400);
@@ -93,8 +104,10 @@ export async function updateMe(userId, request, db) {
 export async function adminListStudents(db) {
   const students = await db.list('students');
   return json(students.map(s => {
-    const { id, username, display_name, university, major, city, longitude, latitude, status_text, can_cengfan, is_admin, created_at } = s;
-    return { id, username, display_name, university, major, city, longitude, latitude, status_text, can_cengfan, is_admin, created_at };
+    const { id, username, display_name, university, major, city, longitude, latitude, status_text, can_cengfan, is_admin, created_at,
+            server_hostname, server_ip, server_theme, server_difficulty, server_ports, hack_loot } = s;
+    return { id, username, display_name, university, major, city, longitude, latitude, status_text, can_cengfan, is_admin, created_at,
+             server_hostname, server_ip, server_theme, server_difficulty, server_ports, hack_loot };
   }));
 }
 
@@ -127,7 +140,8 @@ export async function adminUpdateStudent(id, request, db) {
   const body = await request.json().catch(() => null);
   if (!body) return json({ error: 'invalid json' }, 400);
 
-  const allowed = ['username', 'display_name', 'university', 'major', 'city', 'longitude', 'latitude', 'status_text', 'can_cengfan', 'is_admin'];
+  const allowed = ['username', 'display_name', 'university', 'major', 'city', 'longitude', 'latitude', 'status_text', 'can_cengfan', 'is_admin',
+                   'server_hostname', 'server_ip', 'server_theme', 'server_difficulty', 'server_ports', 'hack_loot'];
   const update = {};
   for (const k of allowed) {
     if (k in body) update[k] = body[k];
@@ -149,6 +163,63 @@ export async function adminUpdateStudent(id, request, db) {
 export async function adminDeleteStudent(id, db) {
   await db.delete('students', id);
   return json({ ok: true });
+}
+
+// ── Hack API ─────────────────────────────────────────────────
+
+// Simple deterministic hostname/IP from display_name (used when student hasn't set one)
+function defaultHostname(name, existingHostnames) {
+  const base = (name || 'unknown').toLowerCase().replace(/[^a-z0-9]/g, '-').replace(/-+/g, '-').slice(0, 20);
+  let hostname = `${base}-srv`;
+  let n = 2;
+  while (existingHostnames.has(hostname)) { hostname = `${base}-srv${n++}`; }
+  return hostname;
+}
+
+function deterministicIp(str) {
+  let h = 0;
+  for (let i = 0; i < str.length; i++) h = (Math.imul(31, h) + str.charCodeAt(i)) | 0;
+  const b1 = 10 + ((h >>> 24) & 0x3f);        // 10–73
+  const b2 = ((h >>> 16) & 0xff);
+  const b3 = ((h >>> 8) & 0xff);
+  const b4 = (h & 0xfe) + 1;                  // avoid .0 and .255
+  return `${b1}.${b2}.${b3}.${b4}`;
+}
+
+const THEMES = ['MATRIX_GREEN', 'ICE_BLUE', 'BLOOD_RED', 'AMBER', 'PHANTOM'];
+
+// GET /api/hack/servers — public listing (no loot)
+export async function hackServers(db) {
+  const students = await db.list('students');
+  const usedHostnames = new Set();
+
+  // First pass: collect all custom hostnames
+  for (const s of students) {
+    if (s.server_hostname) usedHostnames.add(s.server_hostname);
+  }
+
+  const servers = students.map((s, i) => {
+    const hostname = s.server_hostname || defaultHostname(s.display_name || s.username, usedHostnames);
+    const ip       = s.server_ip || deterministicIp(s.id + (s.display_name || ''));
+    const theme    = s.server_theme || THEMES[parseInt(s.id?.slice(-2) || i, 36) % THEMES.length];
+    const difficulty = s.server_difficulty ?? 2;
+    const ports    = s.server_ports || (difficulty <= 2 ? '80,22' : difficulty <= 3 ? '22,80,443' : '22,80,443,8080,3306');
+    return { studentId: s.id, hostname, ip, theme, difficulty, ports };
+  });
+
+  return json(servers);
+}
+
+// GET /api/hack/loot/:studentId — returns loot content (caller must prove they hacked it; we trust client-side for the game)
+export async function hackLoot(studentId, db) {
+  const doc = await db.get('students', studentId);
+  if (!doc) return json({ error: 'not found' }, 404);
+
+  const theme    = doc.server_theme || THEMES[parseInt(doc.id?.slice(-2) || '0', 36) % THEMES.length];
+  const loot     = doc.hack_loot || null;
+  const hostname = doc.server_hostname || defaultHostname(doc.display_name || doc.username, new Set());
+
+  return json({ hostname, theme, loot });
 }
 
 // Settings
