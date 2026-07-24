@@ -340,6 +340,10 @@ body.portal-body {
   text-transform: none;
 }
 
+#pt-vim, #pt-vim * {
+  text-transform: none;
+}
+
 .portal-terminal-input-row {
   display: flex;
   align-items: center;
