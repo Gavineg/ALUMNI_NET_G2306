@@ -834,9 +834,9 @@ function initPortalTerminal(container, session) {
     }
   });
 
-  // Focus input on container click
-  container.addEventListener('click', () => input.focus());
-  input.focus();
+  // Only steal focus when clicking inside the terminal section itself
+  const termSection = output.closest('.portal-terminal') || output.parentElement;
+  if (termSection) termSection.addEventListener('click', () => input.focus());
 
   // Welcome message
   appendLine('Debian GNU/Linux 12 (bookworm) — g2306-node');
