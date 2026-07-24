@@ -9,9 +9,10 @@ let profile = {};
 export async function initStudentPortal(container) {
   const session = getSession();
   container.innerHTML = `
-    <div class="panel-title">&gt; STUDENT_ACCESS // ${session?.name || ''}</div>
+    <div style="display:flex;flex-direction:column;align-items:center;width:100%">
+    <div class="panel-title" style="width:100%;max-width:520px">&gt; STUDENT_ACCESS // ${session?.name || ''}</div>
 
-    <div class="portal-card" style="max-width:520px;margin:0 auto">
+    <div class="portal-card" style="max-width:520px;width:100%">
       <div class="field-group">
         <label class="field-label">&gt; DISPLAY_NAME</label>
         <input class="hud-input" id="s-name" readonly>
@@ -78,7 +79,7 @@ export async function initStudentPortal(container) {
     </div>
 
     <!-- ── 内嵌终端 ───────────────────────────────── -->
-    <div class="portal-terminal" style="max-width:520px;width:100%">
+    <div class="portal-terminal" style="max-width:520px;width:100%;position:relative">
       <div class="portal-terminal-header">
         &gt; NODE_TERMINAL <span id="pt-prompt-label">C:\\G2306</span>
         <span style="opacity:0.5">TYPE HELP FOR COMMANDS</span>
@@ -91,10 +92,11 @@ export async function initStudentPortal(container) {
       </div>
       <!-- vim overlay -->
       <div id="pt-vim" style="display:none;position:fixed;inset:0;height:100vh;background:#050709;flex-direction:column;font-family:monospace;font-size:13px;z-index:9999">
-        <textarea id="pt-vim-body" spellcheck="false" autocomplete="off" style="flex:1;width:100%;height:0;min-height:0;resize:none;background:#050709;color:#b8ff47;border:none;outline:none;padding:8px 10px;box-sizing:border-box;font-family:monospace;font-size:13px;line-height:1.6;text-transform:none;white-space:pre"></textarea>
+        <textarea id="pt-vim-body" spellcheck="false" autocomplete="off" style="flex:1;width:100%;resize:none;background:#050709;color:#b8ff47;border:none;outline:none;padding:8px 10px;box-sizing:border-box;font-family:monospace;font-size:13px;line-height:1.6;text-transform:none;white-space:pre"></textarea>
         <div id="pt-vim-status" style="background:#b8ff47;color:#050709;padding:2px 8px;font-size:12px;font-family:monospace;letter-spacing:1px;text-transform:none;white-space:pre"></div>
         <div id="pt-vim-cmd" style="padding:2px 8px;color:#b8ff47;font-size:12px;font-family:monospace;min-height:20px;text-transform:none"></div>
       </div>
+    </div>
     </div>
   `;
 
