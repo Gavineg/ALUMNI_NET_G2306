@@ -126,6 +126,12 @@
       document.getElementById('reset-btn').classList.add('visible');
 
       initMapUI(chart, initZoom, initCenter);
+
+      // DOS 输入框：加载完成后淡入
+      if (!isMobile) {
+        dosWrap.style.display = 'block';
+        requestAnimationFrame(() => { dosWrap.style.opacity = '1'; });
+      }
     }
 
     // 降级演示数据（无 API 时使用）
@@ -176,7 +182,6 @@
     const dosInput = document.getElementById('dos-input');
 
     if (!isMobile) {
-      dosWrap.style.display = 'block';
       dosInput.addEventListener('keydown', async e => {
         if (e.key !== 'Enter') return;
         const cmd = dosInput.value;

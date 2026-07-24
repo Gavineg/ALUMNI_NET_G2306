@@ -52,21 +52,41 @@ export async function typeWrite(el, text, speed = 32) {
  */
 let typingCtrl = null;
 
+function scrollToBottom(terminal) {
+  // Use requestAnimationFrame to scroll after the DOM has painted
+  requestAnimationFrame(() => { terminal.scrollTop = terminal.scrollHeight; });
+}
+
+function attachScrollTracker(terminal) {
+  if (terminal._scrollTracked) return;
+  terminal._scrollTracked = true;
+  terminal._userScrolled = false;
+  terminal.addEventListener('scroll', () => {
+    const atBottom = terminal.scrollHeight - terminal.scrollTop - terminal.clientHeight < 10;
+    terminal._userScrolled = !atBottom;
+  });
+}
+
 export async function biosAppend(terminal, lines) {
   if (typingCtrl) typingCtrl.abort();
   typingCtrl = new AbortController();
   const { signal } = typingCtrl;
+
+  attachScrollTracker(terminal);
 
   for (const item of lines) {
     if (signal.aborted) return;
     const div = document.createElement('div');
     terminal.appendChild(div);
 
+    // 先滚到底，再开始打字，确保新行从可见区域底部生成
+    if (!terminal._userScrolled) scrollToBottom(terminal);
+    await new Promise(r => requestAnimationFrame(r));
+
     for (const char of item.text) {
       if (signal.aborted) return;
       div.textContent += char;
-      await new Promise(r => requestAnimationFrame(r));
-      terminal.scrollTop = terminal.scrollHeight;
+      if (!terminal._userScrolled) scrollToBottom(terminal);
       await sleep(16 + Math.random() * 22);
     }
 
@@ -77,7 +97,7 @@ export async function biosAppend(terminal, lines) {
       div.appendChild(span);
     }
 
-    terminal.scrollTop = terminal.scrollHeight;
+    if (!terminal._userScrolled) scrollToBottom(terminal);
     await sleep(160 + Math.random() * 200);
   }
 }

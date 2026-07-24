@@ -41,16 +41,14 @@
 
 /* ── DOS 彩蛋输入框 ─────────────────────────────────── */
 #dos-input-wrap {
-  display: none; /* 默认隐藏，桌面端由 JS 打开 */
+  display: none;
   margin-top: 10px;
   pointer-events: auto;
   font-size: 12px;
   letter-spacing: 0.5px;
   color: var(--hud-primary);
-  border: 1px solid var(--hud-border);
-  background: rgba(6,10,15,0.55);
-  padding: 4px 8px;
-  max-width: 260px;
+  opacity: 0;
+  transition: opacity 0.6s ease;
 }
 #dos-prompt {
   color: var(--hud-text-dim);
