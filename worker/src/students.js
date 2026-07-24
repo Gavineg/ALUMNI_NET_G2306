@@ -199,8 +199,8 @@ export async function hackServers(db) {
   }
 
   const servers = students.map((s, i) => {
-    const hostname = s.server_hostname || defaultHostname(s.display_name || s.username, usedHostnames);
-    const ip       = s.server_ip || deterministicIp(s.id + (s.display_name || ''));
+    const hostname = s.server_hostname || defaultHostname(s.username || s.display_name || s.id, usedHostnames);
+    const ip       = s.server_ip || deterministicIp(s.id + (s.username || s.display_name || ''));
     const theme    = s.server_theme || THEMES[parseInt(s.id?.slice(-2) || i, 36) % THEMES.length];
     const difficulty = s.server_difficulty ?? 2;
     const ports    = s.server_ports || (difficulty <= 2 ? '80,22' : difficulty <= 3 ? '22,80,443' : '22,80,443,8080,3306');
@@ -217,7 +217,7 @@ export async function hackLoot(studentId, db) {
 
   const theme    = doc.server_theme || THEMES[parseInt(doc.id?.slice(-2) || '0', 36) % THEMES.length];
   const loot     = doc.hack_loot || null;
-  const hostname = doc.server_hostname || defaultHostname(doc.display_name || doc.username, new Set());
+  const hostname = doc.server_hostname || defaultHostname(doc.username || doc.display_name || doc.id, new Set());
 
   return json({ hostname, theme, loot });
 }

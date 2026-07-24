@@ -369,7 +369,12 @@
           maskValue = '';
           dosInput.value = '';
           dosInput.focus();
-        })
+        }),
+
+        print: (lines) => {
+          const terminal = document.getElementById('terminal-content');
+          return biosAppend(terminal, lines);
+        }
       };
     }
 

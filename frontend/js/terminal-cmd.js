@@ -521,13 +521,13 @@ export async function runCommand(raw, ctx) {
     if (!crackState?.cracked) return [L('PORT NOT CRACKED YET. RUN CRACK FIRST.', 'ERR')];
 
     const challenge = genChallenge();
-    // Store challenge answer for the next input
     crackState.challenge = challenge;
 
-    const lines = [L('> EXPLOIT DELIVERED. AWAITING AUTHENTICATION TOKEN...', 'RUN'), L('> CRYPTO CHALLENGE REQUIRED:'), L('> ─────────────────────────────')];
-    for (const p of challenge.prompt) lines.push(L(p));
+    const introLines = [L('> EXPLOIT DELIVERED. AWAITING AUTHENTICATION TOKEN...', 'RUN'), L('> CRYPTO CHALLENGE REQUIRED:'), L('> ─────────────────────────────')];
+    for (const p of challenge.prompt) introLines.push(L(p));
 
-    // Now we need user input — use promptLine
+    // Print the challenge BEFORE prompting, so user can see the question
+    await ctx.print(introLines);
     const answer = await ctx.promptLine('> ANSWER: ');
     if (!answer) return [L('EXPLOIT ABORTED', 'ERR')];
 
@@ -537,8 +537,6 @@ export async function runCommand(raw, ctx) {
       setHacked(hacked);
       crackState = null;
       return [
-        ...lines,
-        L(''),
         L('> CORRECT. ROOT ACCESS GRANTED.', 'OK'),
         L(`> ${target.hostname} IS NOW UNDER YOUR CONTROL.`, 'OK'),
         L('> TYPE "LS" TO LIST FILES.')
@@ -550,8 +548,6 @@ export async function runCommand(raw, ctx) {
       setFirewall(fw);
       setConnected(null);
       return [
-        ...lines,
-        L(''),
         L('> WRONG ANSWER. SECURITY ALERT TRIGGERED.', 'ERR'),
         L('> CONNECTION TERMINATED. FIREWALL ACTIVE FOR 30s.', 'ERR')
       ];
