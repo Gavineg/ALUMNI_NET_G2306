@@ -67,7 +67,7 @@ function attachScrollTracker(terminal) {
   });
 }
 
-export async function biosAppend(terminal, lines, speed = 1) {
+export async function biosAppend(terminal, lines, speed = 6) {
   if (typingCtrl) typingCtrl.abort();
   typingCtrl = new AbortController();
   const { signal } = typingCtrl;
