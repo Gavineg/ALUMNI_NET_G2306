@@ -430,6 +430,9 @@ function initPortalTerminal(container, session) {
 
     if (cmd === 'pwd') { appendLine(cwd); return; }
     if (cmd === 'clear' || cmd === 'cls') { output.innerHTML = ''; return; }
+    if (cmd === 'help' || cmd === '?') {
+      ['Available commands:', 'Navigation: cd, ls, pwd', 'Files: cat, mkdir, touch, rm, cp, mv, vim, grep, find, tail, head', 'System: uname, hostname, uptime, df, free, ps, env, history, which', 'Utils: echo, chmod, chown, systemctl, ssh, ping', 'Server: cat /etc/g2306/.env  (view config)  |  vim /etc/g2306/.env  (edit config)', 'Other: whoami, id, clear, exit, sudo'].forEach(l => appendLine(l)); return;
+    }
     if (cmd === 'whoami') { appendLine(session?.username || userSlug); return; }
     if (cmd === 'id') {
       const u = session?.username || userSlug;
@@ -463,6 +466,21 @@ function initPortalTerminal(container, session) {
     if (cmd === 'history') { cmdHistory.forEach((c,i) => appendLine('  ' + String(i+1).padStart(4) + '  ' + c)); return; }
     if (cmd === 'echo') { appendLine(args.join(' ').replace(/^["']|["']$/g,'')); return; }
     if (cmd === 'exit' || cmd === 'logout') { appendLine('logout'); return; }
+    if (cmd === 'serverconf' || cmd === 'myserver') {
+      const tok = localStorage.getItem('g2306_token');
+      if (!tok) { appendLine('serverconf: not authenticated','var(--hud-danger)'); return; }
+      let d = {};
+      try { const r = await fetch(API_BASE + '/api/student/me',{headers:{Authorization:'Bearer ' + tok}}); if(r.ok) d=await r.json(); } catch {}
+      appendLine('── Server Configuration ──────────────────');
+      appendLine('HOSTNAME   : ' + (d.server_hostname || '(auto-generated)'));
+      appendLine('PORTS      : ' + (d.server_ports || '22,80'));
+      appendLine('DIFFICULTY : ' + (d.server_difficulty || 2) + '/5');
+      appendLine('THEME      : ' + (d.server_theme || 'DEFAULT'));
+      appendLine('HACK_LOOT  : ' + (d.hack_loot ? d.hack_loot.slice(0,80) : '(not set)'));
+      appendLine('──────────────────────────────────────────');
+      appendLine('Use: vim /etc/g2306/.env  to edit');
+      return;
+    }
     if (cmd === 'which') {
       if (!arg1) { appendLine('which: missing argument','var(--hud-danger)'); return; }
       for (const dir of ['/usr/local/bin','/usr/bin','/bin','/usr/sbin','/sbin']) {
@@ -700,12 +718,22 @@ function initPortalTerminal(container, session) {
 
     // sudo
     if (cmd === 'sudo') {
-      appendLine('[sudo] password for ' + (session?.username || userSlug) + ': ');
+      if (!arg1) { appendLine('usage: sudo <command>','var(--hud-danger)'); return; }
+      const u = session?.username || userSlug;
+      appendLine('[sudo] password for ' + u + ': ');
       const pw = await new Promise(resolve => {
         pendingResolve = { resolve, mask: true, label: '[sudo] password: ' };
         maskValue = ''; input.value = ''; input.focus();
       });
-      if (pw) appendLine('Sorry, try again.','var(--hud-danger)');
+      if (!pw) { appendLine('sudo: no password supplied','var(--hud-danger)'); return; }
+      // validate via login API
+      try {
+        const res = await fetch(API_BASE + '/api/auth/login', {method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify({username:u,password:pw})});
+        if (!res.ok) { appendLine('Sorry, try again.','var(--hud-danger)'); return; }
+        appendLine('sudo: ' + arg + ': command permitted','var(--hud-primary)');
+        // run the subcommand without sudo prefix
+        await handleCmd(args.join(' '));
+      } catch { appendLine('sudo: authentication service unavailable','var(--hud-danger)'); }
       return;
     }
 

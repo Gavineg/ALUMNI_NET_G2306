@@ -336,6 +336,10 @@ body.portal-body {
   text-transform: none;
 }
 
+.portal-terminal-body * {
+  text-transform: none;
+}
+
 .portal-terminal-input-row {
   display: flex;
   align-items: center;
