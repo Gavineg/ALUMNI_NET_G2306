@@ -113,7 +113,7 @@ function helpLines() {
     L('  [ HACK ]    SCAN  CONNECT  PORT  CRACK  EXPLOIT'),
     L('               LS  DOWNLOAD  DISCONNECT'),
     L('               APPLY  THEMES  RESTORE'),
-    L('  [ FILES ]   LS  DIR  CAT <FILE>'),
+    L('  [ FILES ]   LS  DIR  CAT  VIM  MKDIR  TOUCH  RM'),
     L('  [ MISC ]    MATRIX  FORTUNE  42  COFFEE  ABOUT'),
     L(''),
     L('TYPE HELP <COMMAND> FOR DETAILS.')
@@ -520,6 +520,117 @@ export async function runCommand(raw, ctx) {
   if (cmd === 'restore') {
     applyTheme('DEFAULT');
     return [L('> DEFAULT THEME RESTORED.', 'OK')];
+  }
+
+  // ── VIM ────────────────────────────────────────────────────
+  if (cmd === 'vim' || cmd === 'vi' || cmd === 'nano') {
+    const tok = ctx.getToken();
+    const file = arg.trim();
+
+    // 只有登录用户且路径正确才能打开配置文件
+    if (!file) return [L(`${cmd.toUpperCase()}: NO FILE SPECIFIED`, 'ERR')];
+
+    if (file === '/etc/g2306/.env' || file === '/etc/g2306/.env.conf') {
+      if (!tok) return [
+        L(`${cmd.toUpperCase()} /etc/g2306/.env`),
+        L('PERMISSION DENIED — NOT AUTHENTICATED.', 'ERR'),
+        L('LOGIN FIRST TO ACCESS THIS FILE.')
+      ];
+      // 读取当前配置
+      let d = {};
+      try {
+        const res = await fetch(`${API_BASE}/api/student/me`, { headers: { Authorization: `Bearer ${tok}` } });
+        if (res.ok) d = await res.json();
+      } catch {}
+
+      const lines = [
+        L(`  "/etc/g2306/.env"                           4 lines`),
+        L(''),
+        L(`  # G2306 NODE SERVER CONFIGURATION`),
+        L(`  # Edit values below. Use :w to save, :q to quit.`),
+        L(''),
+        L(`  SERVER_HOSTNAME=${d.server_hostname || ''}`),
+        L(`  SERVER_PORTS=${d.server_ports || '22,80'}`),
+        L(`  SERVER_DIFFICULTY=${d.server_difficulty || 2}`),
+        L(`  SERVER_THEME=${d.server_theme || 'DEFAULT'}`),
+        L(`  HACK_LOOT=${d.hack_loot ? '"' + d.hack_loot.slice(0,40) + (d.hack_loot.length>40?'...':'')+'"' : ''}`),
+        L(''),
+        L('  -- INSERT -- (press :w<ENTER> to save changes)')
+      ];
+
+      // 等用户输入 :w 格式的内容
+      const input = await ctx.promptLine('  :');
+      if (!input) return [...lines, L('"[No Write Since Last Change]"', 'ERR')];
+
+      const cmd2 = input.trim().toLowerCase();
+      if (cmd2 === 'q!' || cmd2 === 'q') return [...lines, L('"[File not saved]"')];
+      if (!cmd2.startsWith('w')) return [...lines, L(`  E492: Not an editor command: ${input}`, 'ERR')];
+
+      // 解析 :w KEY=VALUE KEY=VALUE...  或者  :wq KEY=VALUE...
+      const raw = input.replace(/^wq?/i, '').trim();
+      const pairs = {};
+      for (const part of raw.split(/\s+/)) {
+        const [k, ...vs] = part.split('=');
+        if (k && vs.length) pairs[k.trim().toUpperCase()] = vs.join('=').trim().replace(/^"|"$/g,'');
+      }
+
+      const fieldMap = {
+        SERVER_HOSTNAME:   'server_hostname',
+        SERVER_PORTS:      'server_ports',
+        SERVER_DIFFICULTY: 'server_difficulty',
+        SERVER_THEME:      'server_theme',
+        HACK_LOOT:         'hack_loot'
+      };
+
+      const payload = {};
+      for (const [k, v] of Object.entries(pairs)) {
+        if (fieldMap[k]) {
+          payload[fieldMap[k]] = k === 'SERVER_DIFFICULTY' ? Math.min(5, Math.max(1, parseInt(v)||2)) : v;
+        }
+      }
+
+      if (!Object.keys(payload).length) {
+        return [...lines, L('"[No changes to write]"')];
+      }
+
+      try {
+        const res = await fetch(`${API_BASE}/api/student/me`, {
+          method: 'PUT',
+          headers: { 'Content-Type': 'application/json', Authorization: `Bearer ${tok}` },
+          body: JSON.stringify(payload)
+        });
+        if (!res.ok) return [...lines, L('  WRITE FAILED — PERMISSION DENIED', 'ERR')];
+        const saved = Object.keys(payload).join(', ');
+        return [...lines, L(`  "${file}" written — UPDATED: ${saved}`, 'OK')];
+      } catch { return [...lines, L('  WRITE FAILED — CONNECTION ERROR', 'ERR')]; }
+    }
+
+    // 虚拟文件系统里的用户文件
+    const fs = getFS();
+    const vPath = normPath(file);
+    if (fs.files[vPath] !== undefined) {
+      const lines = [
+        L(`  "${file}"                                    1 line`),
+        L(''),
+        L(`  ${fs.files[vPath] || '(empty file)'}`),
+        L(''),
+        L('  -- INSERT --')
+      ];
+      const input = await ctx.promptLine('  :');
+      if (!input) return [...lines, L('"[No Write Since Last Change]"', 'ERR')];
+      const cmd2 = input.trim().toLowerCase();
+      if (cmd2 === 'q!' || cmd2 === 'q') return [...lines, L('"[File not saved]"')];
+      if (!cmd2.startsWith('w')) return [...lines, L(`  E492: Not an editor command: ${input}`, 'ERR')];
+      const content = input.replace(/^wq?/i,'').trim();
+      fs.files[vPath] = content;
+      saveFS(fs);
+      return [...lines, L(`  "${file}" written.`, 'OK')];
+    }
+
+    return [
+      L(`  "${file}": No such file or directory`, 'ERR'),
+      L('  USE: VIM /etc/g2306/.env  to access server config')
+    ];
   }
 
   // ── SERVERCONF ─────────────────────────────────────────────

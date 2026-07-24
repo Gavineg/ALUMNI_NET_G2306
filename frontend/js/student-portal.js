@@ -54,18 +54,6 @@ export async function initStudentPortal(container) {
       <button class="hud-btn full" id="s-save-btn">[SAVE_CHANGES]</button>
       <div class="msg" id="s-msg"></div>
 
-      <div style="border-top:1px dashed var(--hud-border);padding-top:18px;margin-top:18px">
-        <div style="font-size:11px;color:var(--hud-text-dim);letter-spacing:2px;margin-bottom:8px">&gt; SERVER_CONFIG</div>
-        <div style="font-size:11px;color:var(--hud-text-dim);line-height:1.8">
-          USE THE DOS TERMINAL ON THE MAP PAGE TO CONFIGURE YOUR SERVER.<br>
-          COMMANDS: <span style="color:var(--hud-primary)">SERVERCONF</span> — show current config<br>
-          &nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;<span style="color:var(--hud-primary)">SERVERSET HOSTNAME &lt;name&gt;</span><br>
-          &nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;<span style="color:var(--hud-primary)">SERVERSET PORTS &lt;22,80,443&gt;</span><br>
-          &nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;<span style="color:var(--hud-primary)">SERVERSET DIFFICULTY &lt;1-5&gt;</span><br>
-          &nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;<span style="color:var(--hud-primary)">SERVERSET THEME &lt;name&gt;</span><br>
-          &nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;<span style="color:var(--hud-primary)">LOOT</span> — edit your hack loot file
-        </div>
-      </div>
 
       <div style="border-top:1px dashed var(--hud-border);padding-top:18px;margin-top:18px">
         <div style="font-size:11px;color:var(--hud-text-dim);letter-spacing:2px;margin-bottom:14px">&gt; CHANGE_PASSWORD</div>
