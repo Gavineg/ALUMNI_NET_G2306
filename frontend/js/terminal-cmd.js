@@ -74,6 +74,11 @@ function getFS() {
 }
 function saveFS(fs) { sessionStorage.setItem('g2306_fs', JSON.stringify(fs)); }
 
+function getBroken() {
+  try { return JSON.parse(sessionStorage.getItem('g2306_broken') || '{}'); } catch { return {}; }
+}
+function resetBroken() { sessionStorage.removeItem('g2306_broken'); }
+
 function normPath(p) { return p.replace(/\\/g, '/').replace(/\/+/g, '/').replace(/\/$/, '') || '/'; }
 
 // ── Current prompt prefix ─────────────────────────────────────
@@ -83,6 +88,14 @@ export function getPromptPrefix(token) {
   try {
     const p = JSON.parse(atob(token.split('.')[1]));
     const u = (p.username || p.name || 'GUEST').toUpperCase().replace(/\s+/g, '_');
+    // When connected to a remote server, show that server's IP
+    const connected = sessionStorage.getItem('g2306_connected');
+    if (connected) {
+      try {
+        const t = JSON.parse(connected);
+        if (t && t.ip) return t.ip;
+      } catch {}
+    }
     return `C:\\G2306\\${u}`;
   } catch { return 'C:\\G2306'; }
 }
@@ -122,6 +135,7 @@ function helpLines() {
     L('    PASSWD          — change password'),
     L('    PORTAL          — open student/admin dashboard (auto-login)'),
     L('    CD <path>       — navigate virtual directories (C:\\G2306\\<username>)'),
+    L('    REINSTALL       — restore deleted tools and reset local filesystem'),
     L(''),
     L('  [ RECON ]'),
     L('    WHOAMI          — show current user'),
@@ -368,6 +382,7 @@ export async function runCommand(raw, ctx) {
 
   // ── HACK: SCAN ─────────────────────────────────────────────
   if (cmd === 'scan') {
+    if (getBroken()['SCAN.EXE']) return [L('SCAN.EXE: command not found — tool has been deleted.', 'ERR'), L('Use REINSTALL to restore system tools.')];
     const terminal = document.getElementById('terminal-content');
 
     // 先全屏，显示扫描进度
@@ -524,6 +539,7 @@ export async function runCommand(raw, ctx) {
 
   // ── HACK: CRACK ────────────────────────────────────────────
   if (cmd === 'crack') {
+    if (getBroken()['CRACK.EXE']) return [L('CRACK.EXE: command not found — tool has been deleted.', 'ERR'), L('Use REINSTALL to restore system tools.')];
     const target = getConnectedTarget();
     if (!target) return [L('NOT CONNECTED.', 'ERR')];
     if (!crackState) return [L('SELECT A PORT FIRST. USE: PORT <NUM>', 'ERR')];
@@ -562,6 +578,7 @@ export async function runCommand(raw, ctx) {
 
   // ── HACK: EXPLOIT ──────────────────────────────────────────
   if (cmd === 'exploit') {
+    if (getBroken()['EXPLOIT.EXE']) return [L('EXPLOIT.EXE: command not found — tool has been deleted.', 'ERR'), L('Use REINSTALL to restore system tools.')];
     const target = getConnectedTarget();
     if (!target) return [L('NOT CONNECTED.', 'ERR')];
     if (!crackState?.cracked) return [L('PORT NOT CRACKED YET. RUN CRACK FIRST.', 'ERR')];
@@ -919,15 +936,25 @@ export async function runCommand(raw, ctx) {
 
   if ((cmd === 'ls' || cmd === 'dir') && !getConnectedTarget()) {
     const fs = getFS();
-    const tok = ctx.getToken();
-    let username = 'G2306';
-    if (tok) { try { username = JSON.parse(atob(tok.split('.')[1])).name || 'G2306'; } catch {} }
-    const lines = [
-      L(`  SECRETS.TXT`), L(`  ORIGIN.LOG`), L(`  README.MD`), L(`  DO_NOT_OPEN.EXE`)
-    ];
+    const downloads = getDownloads();
+    const broken = getBroken();
+    // Base files always present
+    const baseFiles = ['SECRETS.TXT', 'ORIGIN.LOG', 'README.MD', 'DO_NOT_OPEN.EXE'];
+    // Initial tools (can be deleted/broken)
+    const tools = ['CRACK.EXE', 'EXPLOIT.EXE', 'SCAN.EXE'];
+    const lines = [];
+    for (const f of baseFiles) lines.push(L(`  ${f}`));
+    for (const t of tools) {
+      if (!broken[t]) lines.push(L(`  ${t}`));
+      else lines.push(L(`  ${t}  [CORRUPTED]`, 'ERR'));
+    }
+    // Downloaded files
+    for (const fname of Object.keys(downloads)) lines.push(L(`  ${fname}  [DOWNLOADED]`, 'OK'));
+    // User-created dirs/files
     fs.dirs.forEach(d => lines.push(L(`  [DIR] ${d}`)));
     Object.keys(fs.files).forEach(f => lines.push(L(`  ${f}`)));
-    lines.push(L(`${4 + fs.dirs.length + Object.keys(fs.files).length} ITEM(S)`));
+    const total = baseFiles.length + tools.length + Object.keys(downloads).length + fs.dirs.length + Object.keys(fs.files).length;
+    lines.push(L(`${total} ITEM(S)`));
     return lines;
   }
 
@@ -936,6 +963,15 @@ export async function runCommand(raw, ctx) {
     if (arg.replace(/\s+/g,'').includes('-rf/')) return [L('NICE TRY.'), L('FILESYSTEM PROTECTED BY FRIENDSHIP.', 'OK')];
     const fs = getFS();
     const p = normPath(arg1);
+    const fname = arg1.toUpperCase().replace(/^.*[/\\]/, '');
+    // Check if it's a core tool
+    const coreTools = ['CRACK.EXE', 'EXPLOIT.EXE', 'SCAN.EXE'];
+    if (coreTools.includes(fname)) {
+      const broken = getBroken();
+      broken[fname] = true;
+      sessionStorage.setItem('g2306_broken', JSON.stringify(broken));
+      return [L(`> DELETED: ${fname}`, 'OK'), L(`> WARNING: ${fname.replace('.EXE','')} command is now unavailable.`, 'ERR')];
+    }
     if (fs.files[p] !== undefined) {
       delete fs.files[p];
       saveFS(fs);
@@ -1004,6 +1040,21 @@ export async function runCommand(raw, ctx) {
   }
 
   // ── MISC ───────────────────────────────────────────────────
+  if (cmd === 'reinstall') {
+    resetBroken();
+    saveFS({ dirs: [], files: {} });
+    setDownloads({});
+    return [
+      L('> REINSTALLING SYSTEM...', 'RUN'),
+      L('> [████████████████] 100%'),
+      L('> CRACK.EXE    ... RESTORED', 'OK'),
+      L('> EXPLOIT.EXE  ... RESTORED', 'OK'),
+      L('> SCAN.EXE     ... RESTORED', 'OK'),
+      L('> FILESYSTEM   ... RESET', 'OK'),
+      L('> SYSTEM RESTORE COMPLETE.', 'OK'),
+    ];
+  }
+
   if (cmd === 'matrix') return [L('WAKE UP...'), L('THE MATRIX HAS YOU.'), L('FOLLOW THE WHITE RABBIT.'), L('01000111 00110010 00110011 00110000 00110110')];
   if (cmd === 'hack') return [L(`INITIATING INTRUSION ON "${arg||'UNKNOWN TARGET'}"...`), L('JUST KIDDING. USE SCAN / CONNECT / CRACK / EXPLOIT.', 'OK')];
   if (cmd === 'sudo') return [L(`SUDO ${arg.toUpperCase()||'(NOTHING)'}`), L('[SUDO] PASSWORD FOR GUEST: ********'), L('PERMISSION DENIED. NICE TRY.', 'ERR')];

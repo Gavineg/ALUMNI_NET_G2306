@@ -90,10 +90,10 @@ export async function initStudentPortal(container) {
                autocomplete="off" spellcheck="false" placeholder="enter command...">
       </div>
       <!-- vim overlay -->
-      <div id="pt-vim" style="display:none;position:fixed;inset:0;height:100vh;background:var(--hud-bg);flex-direction:column;font-family:var(--font-mono);font-size:13px;z-index:9999;text-transform:none">
-        <div id="pt-vim-body" style="flex:1;overflow:auto;padding:8px 10px;white-space:pre;color:var(--hud-primary);text-transform:none;cursor:text;line-height:1.6"></div>
-        <div id="pt-vim-status" style="background:var(--hud-border);color:var(--hud-bg);padding:2px 8px;font-size:11px;letter-spacing:1px;text-transform:none"></div>
-        <div id="pt-vim-cmd" style="padding:2px 8px;color:var(--hud-primary);font-size:11px;min-height:18px;text-transform:none"></div>
+      <div id="pt-vim" style="display:none;position:fixed;inset:0;height:100vh;background:#050709;flex-direction:column;font-family:monospace;font-size:13px;z-index:9999">
+        <textarea id="pt-vim-body" spellcheck="false" autocomplete="off" style="flex:1;width:100%;resize:none;background:#050709;color:#b8ff47;border:none;outline:none;padding:8px 10px;font-family:monospace;font-size:13px;line-height:1.6;text-transform:none;white-space:pre"></textarea>
+        <div id="pt-vim-status" style="background:#b8ff47;color:#050709;padding:2px 8px;font-size:12px;font-family:monospace;letter-spacing:1px;text-transform:none;white-space:pre"></div>
+        <div id="pt-vim-cmd" style="padding:2px 8px;color:#b8ff47;font-size:12px;font-family:monospace;min-height:20px;text-transform:none"></div>
       </div>
     </div>
   `;
@@ -611,7 +611,7 @@ function initPortalTerminal(container, session) {
       return;
     }
 
-    // vim / vi / nano — full modal editor for /etc/g2306/.env
+    // vim / vi / nano — textarea-based modal editor for /etc/g2306/.env
     if (cmd === 'vim' || cmd === 'vi' || cmd === 'nano') {
       if (!arg1) { appendLine(cmd + ': missing filename', 'var(--hud-danger)'); return; }
       const fp = resolvePath(arg1);
@@ -619,177 +619,111 @@ function initPortalTerminal(container, session) {
       const tok = localStorage.getItem('g2306_token');
       if (!tok) { appendLine('permission denied: not authenticated', 'var(--hud-danger)'); return; }
 
-      // Fetch current values
       let d = {};
       try { const r = await fetch(API_BASE + '/api/student/me', {headers:{Authorization:'Bearer ' + tok}}); if(r.ok) d = await r.json(); } catch {}
 
-      const fields = [
+      const initContent = [
         'SERVER_HOSTNAME=' + (d.server_hostname || ''),
         'SERVER_PORTS=' + (d.server_ports || '22,80'),
         'SERVER_DIFFICULTY=' + (d.server_difficulty || 2),
         'SERVER_THEME=' + (d.server_theme || 'DEFAULT'),
         'HACK_LOOT=' + (d.hack_loot || ''),
-      ];
+      ].join('\n');
 
-      // Open vim overlay
-      const vimEl   = container.querySelector('#pt-vim');
-      const bodyEl  = container.querySelector('#pt-vim-body');
-      const statusEl= container.querySelector('#pt-vim-status');
-      const cmdEl   = container.querySelector('#pt-vim-cmd');
+      const vimEl    = container.querySelector('#pt-vim');
+      const taEl     = container.querySelector('#pt-vim-body');
+      const statusEl = container.querySelector('#pt-vim-status');
+      const cmdEl    = container.querySelector('#pt-vim-cmd');
 
+      taEl.value = initContent;
       vimEl.style.display = 'flex';
+      taEl.focus();
 
-      // Editor state
-      let lines = [...fields];
-      let cursorRow = 0, cursorCol = 0;
-      let mode = 'normal'; // 'normal' | 'insert' | 'command'
+      // mode: 'normal' | 'insert' | 'command'
+      let mode = 'normal';
       let cmdBuf = '';
       let modified = false;
-
       const FILENAME = '/etc/g2306/.env';
 
-      function clamp(v, lo, hi) { return Math.max(lo, Math.min(hi, v)); }
-
-      function renderBody() {
-        let html = '';
-        for (let r = 0; r < lines.length; r++) {
-          const lineNum = String(r + 1).padStart(3, ' ');
-          const lineContent = lines[r];
-          if (r === cursorRow && mode !== 'command') {
-            const col = clamp(cursorCol, 0, lineContent.length);
-            const before = escHtml(lineContent.slice(0, col));
-            const cursor = escHtml(lineContent[col] || ' ');
-            const after  = escHtml(lineContent.slice(col + 1));
-            html += '<span style="color:var(--hud-text-dim)">' + lineNum + ' </span>'
-                  + before
-                  + '<span style="background:var(--hud-primary);color:var(--hud-bg)">' + cursor + '</span>'
-                  + after + '\n';
-          } else {
-            html += '<span style="color:var(--hud-text-dim)">' + lineNum + ' </span>' + escHtml(lineContent) + '\n';
-          }
+      function setMode(m) {
+        mode = m;
+        if (m === 'insert') {
+          taEl.readOnly = false;
+          statusEl.textContent = '-- INSERT --   ' + FILENAME + (modified ? ' [+]' : '');
+          cmdEl.textContent = '';
+        } else if (m === 'command') {
+          taEl.readOnly = true;
+          statusEl.textContent = FILENAME + (modified ? ' [+]' : '');
+          cmdEl.textContent = ':';
+        } else {
+          taEl.readOnly = true;
+          statusEl.textContent = FILENAME + (modified ? ' [+]' : '') + '  -- NORMAL --  (i=insert  :wq=save  :q!=quit)';
+          cmdEl.textContent = '';
         }
-        // Tilde lines (empty lines below content, like real vim)
-        for (let i = 0; i < 3; i++) {
-          html += '<span style="color:var(--hud-text-dim)">  ~ </span>\n';
-        }
-        bodyEl.innerHTML = html;
       }
+      setMode('normal');
 
-      function escHtml(s) {
-        return String(s).replace(/&/g,'&amp;').replace(/</g,'&lt;').replace(/>/g,'&gt;');
-      }
+      const saved = await new Promise(resolve => {
+        taEl.addEventListener('input', () => { modified = true; setMode('insert'); }, {passive:true});
 
-      function renderStatus() {
-        const modeLabel = mode === 'insert' ? '-- INSERT --' : mode === 'command' ? ':' : '';
-        const pos = (cursorRow + 1) + ',' + (cursorCol + 1);
-        statusEl.textContent = FILENAME + (modified ? ' [+]' : '') + '  ' + modeLabel.padEnd(14) + pos.padStart(10);
-        cmdEl.textContent = mode === 'command' ? ':' + cmdBuf : '';
-      }
-
-      function render() { renderBody(); renderStatus(); }
-      render();
-
-      // Result promise
-      const result = await new Promise(resolve => {
-        function onKey(e) {
-          // Always prevent default to stop terminal input from capturing keys
-          e.stopPropagation();
-
-          if (mode === 'normal') {
-            e.preventDefault();
-            const k = e.key;
-            if (k === 'i') { mode = 'insert'; render(); return; }
-            if (k === 'a') { mode = 'insert'; cursorCol = Math.min(cursorCol + 1, lines[cursorRow].length); render(); return; }
-            if (k === 'A') { mode = 'insert'; cursorCol = lines[cursorRow].length; render(); return; }
-            if (k === 'I') { mode = 'insert'; cursorCol = 0; render(); return; }
-            if (k === 'o') { lines.splice(cursorRow + 1, 0, ''); cursorRow++; cursorCol = 0; mode = 'insert'; modified = true; render(); return; }
-            if (k === 'O') { lines.splice(cursorRow, 0, ''); cursorCol = 0; mode = 'insert'; modified = true; render(); return; }
-            if (k === 'ArrowUp'   || k === 'k') { cursorRow = clamp(cursorRow - 1, 0, lines.length - 1); cursorCol = clamp(cursorCol, 0, lines[cursorRow].length); render(); return; }
-            if (k === 'ArrowDown' || k === 'j') { cursorRow = clamp(cursorRow + 1, 0, lines.length - 1); cursorCol = clamp(cursorCol, 0, lines[cursorRow].length); render(); return; }
-            if (k === 'ArrowLeft' || k === 'h') { cursorCol = clamp(cursorCol - 1, 0, lines[cursorRow].length); render(); return; }
-            if (k === 'ArrowRight'|| k === 'l') { cursorCol = clamp(cursorCol + 1, 0, lines[cursorRow].length); render(); return; }
-            if (k === '0') { cursorCol = 0; render(); return; }
-            if (k === '$') { cursorCol = Math.max(0, lines[cursorRow].length - 1); render(); return; }
-            if (k === 'g') { cursorRow = 0; cursorCol = 0; render(); return; }
-            if (k === 'G') { cursorRow = lines.length - 1; cursorCol = 0; render(); return; }
-            if (k === 'x') { const l = lines[cursorRow]; if (cursorCol < l.length) { lines[cursorRow] = l.slice(0,cursorCol) + l.slice(cursorCol+1); modified = true; } render(); return; }
-            if (k === 'd' && e.ctrlKey) { cursorRow = clamp(cursorRow + 10, 0, lines.length-1); render(); return; }
-            if (k === 'u' && e.ctrlKey) { cursorRow = clamp(cursorRow - 10, 0, lines.length-1); render(); return; }
-            if (k === ':') { mode = 'command'; cmdBuf = ''; render(); return; }
-            if (k === 'Escape') { render(); return; }
+        taEl.addEventListener('keydown', function onKey(e) {
+          if (mode === 'insert') {
+            if (e.key === 'Escape') { e.preventDefault(); setMode('normal'); }
             return;
           }
 
-          if (mode === 'insert') {
-            if (k === 'Escape') { mode = 'normal'; cursorCol = Math.max(0, cursorCol - 1); render(); return; }
+          if (mode === 'normal') {
             e.preventDefault();
-            if (k === 'ArrowUp')    { cursorRow = clamp(cursorRow-1,0,lines.length-1); render(); return; }
-            if (k === 'ArrowDown')  { cursorRow = clamp(cursorRow+1,0,lines.length-1); render(); return; }
-            if (k === 'ArrowLeft')  { cursorCol = clamp(cursorCol-1,0,lines[cursorRow].length); render(); return; }
-            if (k === 'ArrowRight') { cursorCol = clamp(cursorCol+1,0,lines[cursorRow].length); render(); return; }
-            if (k === 'Home') { cursorCol = 0; render(); return; }
-            if (k === 'End')  { cursorCol = lines[cursorRow].length; render(); return; }
-            if (k === 'Enter') {
-              const l = lines[cursorRow];
-              lines[cursorRow] = l.slice(0, cursorCol);
-              lines.splice(cursorRow + 1, 0, l.slice(cursorCol));
-              cursorRow++; cursorCol = 0; modified = true; render(); return;
-            }
-            if (k === 'Backspace') {
-              const l = lines[cursorRow];
-              if (cursorCol > 0) { lines[cursorRow] = l.slice(0,cursorCol-1) + l.slice(cursorCol); cursorCol--; modified = true; }
-              else if (cursorRow > 0) { const prev = lines[cursorRow-1]; cursorCol = prev.length; lines[cursorRow-1] = prev + l; lines.splice(cursorRow,1); cursorRow--; modified = true; }
-              render(); return;
-            }
-            if (k === 'Delete') {
-              const l = lines[cursorRow];
-              if (cursorCol < l.length) { lines[cursorRow] = l.slice(0,cursorCol) + l.slice(cursorCol+1); modified = true; }
-              else if (cursorRow < lines.length-1) { lines[cursorRow] = l + lines[cursorRow+1]; lines.splice(cursorRow+1,1); modified = true; }
-              render(); return;
-            }
-            if (k === 'Tab') { lines[cursorRow] = lines[cursorRow].slice(0,cursorCol) + '  ' + lines[cursorRow].slice(cursorCol); cursorCol += 2; modified = true; render(); return; }
-            if (k.length === 1) {
-              const l = lines[cursorRow];
-              lines[cursorRow] = l.slice(0, cursorCol) + k + l.slice(cursorCol);
-              cursorCol++; modified = true; render(); return;
-            }
+            if (e.key === 'i' || e.key === 'a' || e.key === 'Insert') { setMode('insert'); taEl.readOnly = false; taEl.focus(); return; }
+            if (e.key === ':') { setMode('command'); cmdBuf = ''; cmdEl.textContent = ':'; return; }
+            // basic navigation
+            const pos = taEl.selectionStart;
+            const val = taEl.value;
+            if (e.key === 'ArrowDown' || e.key === 'j') { const nl = val.indexOf('\n', pos); if (nl >= 0) { taEl.selectionStart = taEl.selectionEnd = nl + 1; } return; }
+            if (e.key === 'ArrowUp'   || e.key === 'k') { const prev = val.lastIndexOf('\n', pos - 1); const prev2 = val.lastIndexOf('\n', prev - 1); taEl.selectionStart = taEl.selectionEnd = prev2 + 1; return; }
+            if (e.key === 'ArrowLeft' || e.key === 'h') { taEl.selectionStart = taEl.selectionEnd = Math.max(0, pos - 1); return; }
+            if (e.key === 'ArrowRight'|| e.key === 'l') { taEl.selectionStart = taEl.selectionEnd = Math.min(val.length, pos + 1); return; }
+            if (e.key === '0') { const ls = val.lastIndexOf('\n', pos - 1); taEl.selectionStart = taEl.selectionEnd = ls + 1; return; }
+            if (e.key === '$') { const le = val.indexOf('\n', pos); taEl.selectionStart = taEl.selectionEnd = le < 0 ? val.length : le; return; }
+            if (e.key === 'x') { taEl.readOnly = false; const s = taEl.selectionStart; taEl.value = val.slice(0, s) + val.slice(s + 1); taEl.selectionStart = taEl.selectionEnd = s; taEl.readOnly = true; modified = true; setMode('normal'); return; }
             return;
           }
 
           if (mode === 'command') {
             e.preventDefault();
-            if (k === 'Escape') { mode = 'normal'; cmdBuf = ''; render(); return; }
-            if (k === 'Backspace') { cmdBuf = cmdBuf.slice(0,-1); render(); return; }
-            if (k === 'Enter') {
+            if (e.key === 'Escape') { setMode('normal'); cmdBuf = ''; return; }
+            if (e.key === 'Backspace') { cmdBuf = cmdBuf.slice(0,-1); cmdEl.textContent = ':' + cmdBuf; return; }
+            if (e.key === 'Enter') {
               const c = cmdBuf.trim();
-              if (c === 'q!') { vimEl.style.display = 'none'; document.removeEventListener('keydown', onKey, true); resolve(null); return; }
-              if (c === 'q' && !modified) { vimEl.style.display = 'none'; document.removeEventListener('keydown', onKey, true); resolve(null); return; }
-              if (c === 'q' && modified) { cmdEl.textContent = 'E37: No write since last change (add ! to override)'; mode = 'normal'; cmdBuf = ''; setTimeout(render, 1500); return; }
-              if (c === 'w' || c === 'wq' || c === 'x') {
+              if (c === 'q!' || (c === 'q' && !modified)) {
                 vimEl.style.display = 'none';
-                document.removeEventListener('keydown', onKey, true);
-                resolve(lines);
-                return;
+                taEl.removeEventListener('keydown', onKey);
+                resolve(null); return;
+              }
+              if (c === 'q' && modified) {
+                cmdEl.textContent = 'E37: No write since last change  (use :q! to force)';
+                setTimeout(() => setMode('normal'), 2000); cmdBuf = ''; return;
+              }
+              if (c === 'w' || c === 'wq' || c === 'x') {
+                const content = taEl.value;
+                vimEl.style.display = 'none';
+                taEl.removeEventListener('keydown', onKey);
+                resolve(content); return;
               }
               cmdEl.textContent = 'E492: Not an editor command: ' + c;
-              mode = 'normal'; cmdBuf = ''; setTimeout(render, 1500);
-              return;
+              setTimeout(() => setMode('normal'), 1500); cmdBuf = ''; return;
             }
-            if (k.length === 1) { cmdBuf += k; render(); }
+            if (e.key.length === 1) { cmdBuf += e.key; cmdEl.textContent = ':' + cmdBuf; }
             return;
           }
-        }
-
-        document.addEventListener('keydown', onKey, true);
-        vimEl.focus && vimEl.focus();
+        });
       });
 
-      if (!result) { appendLine(FILENAME + ' unchanged'); return; }
+      if (saved === null) { appendLine(FILENAME + ' unchanged'); return; }
 
-      // Parse lines back into payload
       const fm = {SERVER_HOSTNAME:'server_hostname', SERVER_PORTS:'server_ports', SERVER_DIFFICULTY:'server_difficulty', SERVER_THEME:'server_theme', HACK_LOOT:'hack_loot'};
       const payload = {};
-      for (const line of result) {
+      for (const line of saved.split('\n')) {
         const eq = line.indexOf('=');
         if (eq < 0) continue;
         const k = line.slice(0, eq).trim().toUpperCase();
@@ -799,11 +733,10 @@ function initPortalTerminal(container, session) {
       if (!Object.keys(payload).length) { appendLine('"' + FILENAME + '" unchanged'); return; }
       try {
         const res = await fetch(API_BASE + '/api/student/me', {method:'PUT', headers:{'Content-Type':'application/json', Authorization:'Bearer ' + tok}, body:JSON.stringify(payload)});
-        appendLine(res.ok ? '"' + FILENAME + '" written, ' + Object.keys(payload).length + ' field(s) saved' : 'write failed: server error', res.ok ? undefined : 'var(--hud-danger)');
+        appendLine(res.ok ? '"' + FILENAME + '" written, ' + Object.keys(payload).length + ' field(s) saved' : 'write failed', res.ok ? undefined : 'var(--hud-danger)');
       } catch { appendLine('write failed: connection error', 'var(--hud-danger)'); }
       return;
     }
-
     // grep
     if (cmd === 'grep') {
       const patIdx = args.findIndex(a => !a.startsWith('-'));
