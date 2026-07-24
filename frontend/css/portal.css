@@ -345,6 +345,53 @@ body.portal-body {
   text-transform: none;
 }
 
+#pt-vim {
+  flex-direction: column;
+  background: #050709;
+  font-family: 'Courier New', Courier, monospace;
+  font-size: 13px;
+}
+
+#pt-vim-body {
+  flex: 1;
+  width: 100%;
+  min-height: 0;
+  resize: none;
+  background: #050709 !important;
+  color: #b8ff47 !important;
+  border: none;
+  outline: none;
+  padding: 8px 12px;
+  box-sizing: border-box;
+  font-family: 'Courier New', Courier, monospace;
+  font-size: 13px;
+  line-height: 1.65;
+  white-space: pre;
+  caret-color: #b8ff47;
+}
+
+#pt-vim-status {
+  flex-shrink: 0;
+  background: #b8ff47;
+  color: #050709;
+  padding: 3px 10px;
+  font-size: 12px;
+  font-family: 'Courier New', Courier, monospace;
+  letter-spacing: 1px;
+  white-space: pre;
+  user-select: none;
+}
+
+#pt-vim-cmd {
+  flex-shrink: 0;
+  padding: 2px 10px;
+  color: #b8ff47;
+  font-size: 12px;
+  font-family: 'Courier New', Courier, monospace;
+  min-height: 22px;
+  background: #050709;
+}
+
 .portal-terminal-input-row {
   display: flex;
   align-items: center;

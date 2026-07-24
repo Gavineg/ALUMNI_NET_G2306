@@ -91,10 +91,10 @@ export async function initStudentPortal(container) {
                autocomplete="off" spellcheck="false" placeholder="enter command...">
       </div>
       <!-- vim overlay -->
-      <div id="pt-vim" style="display:none;position:fixed;inset:0;height:100vh;background:#050709;flex-direction:column;font-family:monospace;font-size:13px;z-index:9999">
-        <textarea id="pt-vim-body" spellcheck="false" autocomplete="off" style="flex:1;width:100%;resize:none;background:#050709;color:#b8ff47;border:none;outline:none;padding:8px 10px;box-sizing:border-box;font-family:monospace;font-size:13px;line-height:1.6;text-transform:none;white-space:pre"></textarea>
-        <div id="pt-vim-status" style="background:#b8ff47;color:#050709;padding:2px 8px;font-size:12px;font-family:monospace;letter-spacing:1px;text-transform:none;white-space:pre"></div>
-        <div id="pt-vim-cmd" style="padding:2px 8px;color:#b8ff47;font-size:12px;font-family:monospace;min-height:20px;text-transform:none"></div>
+      <div id="pt-vim" style="display:none;position:fixed;top:0;left:0;right:0;bottom:0;z-index:9999">
+        <textarea id="pt-vim-body" spellcheck="false" autocomplete="off"></textarea>
+        <div id="pt-vim-status"></div>
+        <div id="pt-vim-cmd"></div>
       </div>
     </div>
     </div>
@@ -639,6 +639,9 @@ function initPortalTerminal(container, session) {
 
       taEl.value = initContent;
       vimEl.style.display = 'flex';
+      // Force reflow so flex layout applies before focus
+      void vimEl.offsetHeight;
+      taEl.readOnly = true;
       taEl.focus();
 
       // mode: 'normal' | 'insert' | 'command'
