@@ -90,7 +90,7 @@ export async function initStudentPortal(container) {
                autocomplete="off" spellcheck="false" placeholder="enter command...">
       </div>
       <!-- vim overlay -->
-      <div id="pt-vim" style="display:none;position:fixed;inset:0;background:var(--hud-bg);border:1px solid var(--hud-border);flex-direction:column;font-family:var(--font-mono);font-size:12px;z-index:9999;text-transform:none">
+      <div id="pt-vim" style="display:none;position:fixed;inset:0;height:100vh;background:var(--hud-bg);flex-direction:column;font-family:var(--font-mono);font-size:13px;z-index:9999;text-transform:none">
         <div id="pt-vim-body" style="flex:1;overflow:auto;padding:8px 10px;white-space:pre;color:var(--hud-primary);text-transform:none;cursor:text;line-height:1.6"></div>
         <div id="pt-vim-status" style="background:var(--hud-border);color:var(--hud-bg);padding:2px 8px;font-size:11px;letter-spacing:1px;text-transform:none"></div>
         <div id="pt-vim-cmd" style="padding:2px 8px;color:var(--hud-primary);font-size:11px;min-height:18px;text-transform:none"></div>

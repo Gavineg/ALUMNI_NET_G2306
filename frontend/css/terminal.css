@@ -152,6 +152,17 @@
   min-height: 100px;
   max-height: 28vh;
   overflow-y: auto;
+  text-transform: none;
+}
+
+#terminal-content *,
+#dos-input-wrap,
+#dos-prompt,
+.panel-header,
+.close-btn,
+#fullscreen-input-row,
+#fullscreen-prompt {
+  text-transform: none;
 }
 
 /* ── 面板关闭动画 ─────────────────────────────────────── */
