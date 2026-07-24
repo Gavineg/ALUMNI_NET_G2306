@@ -107,16 +107,52 @@ function helpLines() {
   return [
     L('AVAILABLE COMMANDS ::'),
     L(''),
-    L('  [ SYSTEM ]  HELP  DATE  CLEAR  EXIT'),
-    L('  [ AUTH ]    LOGIN  LOGOUT  ME  SET  PASSWD'),
-    L('  [ RECON ]   STATS  FIND  ROSTER'),
-    L('  [ HACK ]    SCAN  CONNECT  PORT  CRACK  EXPLOIT'),
-    L('               LS  DOWNLOAD  DISCONNECT'),
-    L('               APPLY  THEMES  RESTORE'),
-    L('  [ FILES ]   LS  DIR  CAT  VIM  MKDIR  TOUCH  RM'),
-    L('  [ MISC ]    MATRIX  FORTUNE  42  COFFEE  ABOUT'),
+    L('  [ SYSTEM ]'),
+    L('    HELP            — show this help'),
+    L('    DATE            — show current date/time'),
+    L('    CLEAR           — clear terminal output'),
+    L('    FULLSCREEN      — enter fullscreen terminal mode'),
+    L('    EXIT            — exit fullscreen / close panel'),
     L(''),
-    L('TYPE HELP <COMMAND> FOR DETAILS.')
+    L('  [ AUTH ]'),
+    L('    LOGIN           — authenticate with username + password'),
+    L('    LOGOUT          — end current session'),
+    L('    ME              — show your profile'),
+    L('    SET <field> <v> — update profile field (UNIVERSITY/MAJOR/STATUS/CENGFAN)'),
+    L('    PASSWD          — change password'),
+    L(''),
+    L('  [ RECON ]'),
+    L('    WHOAMI          — show current user'),
+    L('    STATS           — cohort statistics'),
+    L('    FIND <name>     — locate a student on map'),
+    L('    ROSTER          — fullscreen list of all classmates by city'),
+    L(''),
+    L('  [ HACK ]'),
+    L('    SCAN            — scan network for live hosts'),
+    L('    CONNECT <host>  — connect to a host (hostname or IP)'),
+    L('    PORT <num>      — select port to attack'),
+    L('    CRACK           — attempt to crack selected port'),
+    L('    EXPLOIT         — solve crypto challenge to gain root'),
+    L('    LS              — list files on rooted server'),
+    L('    DOWNLOAD <file> — download file from server'),
+    L('    DISCONNECT      — close current connection'),
+    L('    APPLY <file>    — apply downloaded theme'),
+    L('    THEMES          — list downloaded themes'),
+    L('    RESTORE         — restore default theme'),
+    L(''),
+    L('  [ FILES ]'),
+    L('    LS / DIR        — list local files'),
+    L('    CAT <file>      — read a file'),
+    L('    MKDIR <dir>     — create directory'),
+    L('    TOUCH <file>    — create empty file'),
+    L('    ECHO <t> > <f>  — write text to file'),
+    L('    RM <file>       — delete file or directory'),
+    L('    VIM <file>      — edit a file (supports /etc/g2306/.env)'),
+    L(''),
+    L('  [ MISC ]'),
+    L('    MATRIX  FORTUNE  42  COFFEE  ABOUT  SL  KONAMI'),
+    L(''),
+    L('  CTRL+C  — interrupt current command (stays in fullscreen)')
   ];
 }
 
@@ -147,6 +183,10 @@ export async function runCommand(raw, ctx) {
 
   if (cmd === 'date' || cmd === 'time') return [L(new Date().toString().toUpperCase())];
   if (cmd === 'clear' || cmd === 'cls') { ctx.clearTerminal(); return []; }
+  if (cmd === 'fullscreen' || cmd === 'fs') {
+    ctx.setFullscreen(true);
+    return [L('FULLSCREEN MODE. TYPE EXIT TO RETURN TO MAP.', 'RDY')];
+  }
   if (cmd === 'exit'  || cmd === 'quit' || cmd === 'close') {
     ctx.setFullscreen(false);
     ctx.closePanel();
@@ -282,60 +322,145 @@ export async function runCommand(raw, ctx) {
 
   // ── HACK: SCAN ─────────────────────────────────────────────
   if (cmd === 'scan') {
+    const terminal = document.getElementById('terminal-content');
+
+    // 先全屏，显示扫描进度
+    ctx.setFullscreen(true);
+    const t0 = Date.now();
+
+    // 扫描动画行（边扫描边显示进度）
+    const scanStages = [
+      'Initializing ARP broadcast on 10.0.0.0/8...',
+      'Probing CIDR blocks: 10.0.0.0/8  172.16.0.0/12  192.168.0.0/16',
+      'Running SYN sweep on ports 21,22,23,25,80,443,3306,8080...',
+      'Resolving PTR records...',
+      'Fingerprinting TTL and TCP window sizes...',
+      'Enumerating banner strings on open ports...',
+      'Cross-referencing with passive DNS cache...',
+      'Building host table...',
+    ];
+
+    let servers;
+    let fetchErr = false;
+
+    // fetch 和动画并行
+    const fetchPromise = fetch(`${API_BASE}/api/hack/servers`)
+      .then(r => { if (!r.ok) throw new Error(); return r.json(); })
+      .then(d => { servers = d; })
+      .catch(() => { fetchErr = true; });
+
+    // 动画行逐条打出
+    for (const stage of scanStages) {
+      const elapsed = ((Date.now() - t0) / 1000).toFixed(2);
+      const div = document.createElement('div');
+      div.textContent = `[${elapsed}s]  ${stage}`;
+      div.style.color = 'var(--hud-text-dim)';
+      terminal.appendChild(div);
+      if (!terminal._userScrolled) requestAnimationFrame(() => { terminal.scrollTop = terminal.scrollHeight; });
+      await sleep(350 + Math.random() * 250);
+      if (servers || fetchErr) break;
+    }
+
+    // 等 fetch 完成（最多5s）
+    const deadline = t0 + 5000;
+    while (!servers && !fetchErr && Date.now() < deadline) await sleep(100);
+
+    const elapsed = ((Date.now() - t0) / 1000).toFixed(2);
+
+    if (fetchErr || !servers) {
+      ctx.setFullscreen(false);
+      return [L(`SCAN FAILED — API UNREACHABLE  [${elapsed}s]`, 'ERR')];
+    }
+
+    // 清屏，全屏快速输出结果（像 nmap txt）
+    ctx.clearTerminal();
+    const hacked = getHacked();
+    const osTypes = ['Linux 4.15', 'Linux 5.4', 'Linux 3.10', 'OpenBSD 6.8', 'FreeBSD 12.1', 'Windows Server 2016', 'Ubuntu 20.04', 'CentOS 7.9', 'Debian 10'];
+    const services = { '21':'ftp','22':'ssh','23':'telnet','25':'smtp','80':'http','443':'https','3306':'mysql','8080':'http-proxy','3389':'rdp','8443':'https-alt','6379':'redis','27017':'mongodb' };
+
+    const lines = [
+      L(`Starting G2306-SCAN  at ${new Date().toISOString().replace('T',' ').slice(0,19)}`),
+      L(`Scan report for G2306 Alumni Network (10.0.0.0/8)`),
+      L(`Scan completed in ${elapsed}s  —  ${servers.length} hosts up`),
+      L(''),
+      L('─────────────────────────────────────────────────────────────────'),
+    ];
+
+    for (const s of servers) {
+      const rooted = hacked[s.hostname];
+      const os = osTypes[Math.abs(s.hostname.split('').reduce((a,c)=>a+c.charCodeAt(0),0)) % osTypes.length];
+      const ports = (s.ports || '22,80').split(',').map(p => p.trim());
+      lines.push(L(''));
+      lines.push(L(`Host: ${s.ip}  (${s.hostname})${rooted ? '  [ROOTED]' : ''}`, rooted ? 'OK' : undefined));
+      lines.push(L(`  OS guess: ${os}`));
+      lines.push(L(`  PORT      STATE   SERVICE`));
+      for (const p of ports) {
+        lines.push(L(`  ${p.padEnd(9)} open    ${(services[p]||'unknown').padEnd(14)}`));
+      }
+    }
+
+    lines.push(L(''));
+    lines.push(L('─────────────────────────────────────────────────────────────────'));
+    lines.push(L(`${servers.length} host(s) scanned.  CONNECT <hostname> or CONNECT <ip>`));
+    lines.push(L('TYPE EXIT TO RETURN TO MAP.'));
+
+    // 快速打印（每行极短延迟，5s内结束）
+    const perLine = Math.min(80, Math.floor(4000 / lines.length));
+    for (const item of lines) {
+      const div = document.createElement('div');
+      div.textContent = item.text;
+      if (item.status === 'OK') div.style.color = 'var(--hud-primary)';
+      else if (item.status === 'ERR') div.style.color = 'var(--hud-danger)';
+      else div.style.color = 'var(--hud-text-dim)';
+      terminal.appendChild(div);
+      if (!terminal._userScrolled) requestAnimationFrame(() => { terminal.scrollTop = terminal.scrollHeight; });
+      await sleep(perLine);
+    }
+    return [];
+  }
+
+  // ── HACK: CONNECT ──────────────────────────────────────────
+  if (cmd === 'connect') {
+    if (!arg1) return [L('USAGE: CONNECT <hostname|ip>', 'ERR')];
     let servers;
     try {
       const res = await fetch(`${API_BASE}/api/hack/servers`);
       if (!res.ok) throw new Error();
       servers = await res.json();
-    } catch { return [L('SCAN FAILED — API UNREACHABLE', 'ERR')]; }
+    } catch { return [L('API UNREACHABLE', 'ERR')]; }
 
-    const hacked = getHacked();
-    const lines = [L('> SCANNING NETWORK...', 'RUN'), L('> ─────────────────────────────────')];
-    for (const s of servers) {
-      const status = hacked[s.hostname] ? '[ROOTED]' : '[LOCKED]';
-      const statusCode = hacked[s.hostname] ? 'OK' : undefined;
-      lines.push(L(`  ${s.ip.padEnd(16)} ${s.hostname.padEnd(28)} ${stars(s.difficulty)} ${status}`, statusCode));
-    }
-    lines.push(L(''));
-    lines.push(L(`> ${servers.length} HOST(S) FOUND.  USE: CONNECT <HOSTNAME>`));
-    return lines;
-  }
-
-  // ── HACK: CONNECT ──────────────────────────────────────────
-  if (cmd === 'connect') {
-    if (!arg1) return [L('USAGE: CONNECT <HOSTNAME>', 'ERR')];
-    let servers;
-    try {
-      const res = await fetch(`${API_BASE}/api/hack/servers`);
-      servers = await res.json();
-    } catch { return [L('SCAN FAILED', 'ERR')]; }
-
-    const target = servers.find(s => s.hostname.toLowerCase() === arg1.toLowerCase());
-    if (!target) return [L(`HOST NOT FOUND: ${arg1.toUpperCase()}`, 'ERR'), L('USE SCAN TO LIST AVAILABLE HOSTS.')];
+    // 支持 hostname 或 IP 都能连
+    const target = servers.find(s =>
+      s.hostname.toLowerCase() === arg1.toLowerCase() ||
+      s.ip === arg1
+    );
+    if (!target) return [L(`connect: ${arg1}: No route to host`, 'ERR')];
 
     const fw = getFirewall();
     if (fw[target.hostname] && Date.now() < fw[target.hostname]) {
       const remaining = Math.ceil((fw[target.hostname] - Date.now()) / 1000);
-      return [L(`FIREWALL ACTIVE — BLOCKED FOR ${remaining}s`, 'ERR')];
+      return [L(`ssh: connect to host ${target.ip} port 22: Connection refused  (firewall active, ${remaining}s remaining)`, 'ERR')];
     }
 
     setConnected(JSON.stringify(target));
     crackState = null;
     const hacked = getHacked();
     const ports = target.ports.split(',').map(p => p.trim());
+    const services2 = { '21':'ftp','22':'ssh','23':'telnet','25':'smtp','80':'http','443':'https','3306':'mysql','8080':'http-proxy','3389':'rdp','8443':'https-alt','6379':'redis','27017':'mongodb' };
     const lines = [
-      L(`> CONNECTING TO ${target.hostname}...`, 'RUN'),
-      L(`> IP: ${target.ip}`),
-      L(`> OS: UNKNOWN`),
-      L(`> DIFFICULTY: ${stars(target.difficulty)}`),
-      L(`> OPEN PORTS:`),
+      L(`Trying ${target.ip}...`),
+      L(`Connected to ${target.hostname}.`),
+      L(`Escape character is '^]'.`),
+      L(''),
+      L(`  HOST  : ${target.hostname}  (${target.ip})`),
+      L(`  PORT  STATE   SERVICE`),
     ];
-    for (const p of ports) lines.push(L(`    ${p.padStart(5)}  — ${portName(p)}`));
+    for (const p of ports) lines.push(L(`  ${p.padEnd(6)} open    ${services2[p]||'unknown'}`));
+    lines.push(L(''));
     if (hacked[target.hostname]) {
-      lines.push(L('> STATUS: ROOTED', 'OK'));
-      lines.push(L('> TYPE "LS" TO LIST FILES'));
+      lines.push(L('  [!] ROOT shell available — type LS to browse filesystem', 'OK'));
     } else {
-      lines.push(L('> SELECT A PORT TO ATTACK:  PORT <NUM>', 'RDY'));
+      lines.push(L('  [*] Target is live. Select a port to attack: PORT <num>', 'RDY'));
     }
     return lines;
   }

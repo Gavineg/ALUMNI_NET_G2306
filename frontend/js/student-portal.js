@@ -1,11 +1,14 @@
 import { apiFetch, getSession } from './auth.js';
 import { API_BASE } from './config.js';
+import { runCommand, getPromptPrefix } from './terminal-cmd.js';
+import { biosAppend } from './boot.js';
 
 let profile = {};
 
 export async function initStudentPortal(container) {
+  const session = getSession();
   container.innerHTML = `
-    <div class="panel-title">&gt; STUDENT_ACCESS // ${getSession()?.name || ''}</div>
+    <div class="panel-title">&gt; STUDENT_ACCESS // ${session?.name || ''}</div>
 
     <div class="portal-card" style="max-width:520px">
       <div class="field-group">
@@ -54,7 +57,6 @@ export async function initStudentPortal(container) {
       <button class="hud-btn full" id="s-save-btn">[SAVE_CHANGES]</button>
       <div class="msg" id="s-msg"></div>
 
-
       <div style="border-top:1px dashed var(--hud-border);padding-top:18px;margin-top:18px">
         <div style="font-size:11px;color:var(--hud-text-dim);letter-spacing:2px;margin-bottom:14px">&gt; CHANGE_PASSWORD</div>
         <div class="field-group">
@@ -73,10 +75,25 @@ export async function initStudentPortal(container) {
         <div class="msg" id="s-pw-msg"></div>
       </div>
     </div>
+
+    <!-- ── 内嵌终端 ───────────────────────────────── -->
+    <div class="portal-terminal" style="max-width:520px;width:100%">
+      <div class="portal-terminal-header">
+        &gt; NODE_TERMINAL <span id="pt-prompt-label">C:\\G2306</span>
+        <span style="opacity:0.5">TYPE HELP FOR COMMANDS</span>
+      </div>
+      <div class="portal-terminal-body" id="pt-output"></div>
+      <div class="portal-terminal-input-row">
+        <span class="portal-terminal-prompt" id="pt-prompt">C:\\G2306&gt;&nbsp;</span>
+        <input class="portal-terminal-input" id="pt-input" type="text"
+               autocomplete="off" spellcheck="false" placeholder="enter command...">
+      </div>
+    </div>
   `;
 
   await loadProfile(container);
   bindStudentEvents(container);
+  initPortalTerminal(container, session);
 }
 
 async function loadProfile(container) {
@@ -227,4 +244,161 @@ function bindStudentEvents(container) {
       btn.disabled = false; btn.textContent = '[UPDATE_PASSWORD]';
     }
   });
+}
+
+// ── 内嵌终端 ───────────────────────────────────────────────────
+
+function initPortalTerminal(container, session) {
+  const output   = container.querySelector('#pt-output');
+  const input    = container.querySelector('#pt-input');
+  const promptEl = container.querySelector('#pt-prompt');
+  const labelEl  = container.querySelector('#pt-prompt-label');
+
+  const token = localStorage.getItem('g2306_token');
+  let pendingResolve = null;
+  let maskValue = '';
+  let cmdRunning = false;
+  const history = [];
+  let histIdx = -1;
+
+  function getPrefix() {
+    return getPromptPrefix(localStorage.getItem('g2306_token'));
+  }
+
+  function updatePrompt() {
+    const p = getPrefix();
+    promptEl.textContent = p + '> ';
+    if (labelEl) labelEl.textContent = p;
+  }
+  updatePrompt();
+
+  function appendLine(text, color) {
+    const div = document.createElement('div');
+    div.textContent = text;
+    if (color) div.style.color = color;
+    output.appendChild(div);
+    output.scrollTop = output.scrollHeight;
+  }
+
+  // ctx — 简化版，后台终端没有地图/全屏
+  function makeCtx() {
+    return {
+      openPanel:    () => {},
+      closePanel:   () => {},
+      clearTerminal: () => { output.innerHTML = ''; },
+      getMapData:   () => null,
+      flyTo:        () => {},
+      setFullscreen: () => {},
+      getToken:     () => localStorage.getItem('g2306_token'),
+      setToken:     (t) => { if (t) localStorage.setItem('g2306_token', t); else localStorage.removeItem('g2306_token'); },
+
+      promptLine: (label) => new Promise(resolve => {
+        appendLine(label);
+        pendingResolve = { resolve, mask: false, label };
+        maskValue = '';
+        input.value = '';
+        input.focus();
+      }),
+      promptPassword: (label) => new Promise(resolve => {
+        appendLine(label);
+        pendingResolve = { resolve, mask: true, label };
+        maskValue = '';
+        input.value = '';
+        input.focus();
+      }),
+    };
+  }
+
+  // 密码遮掩
+  input.addEventListener('input', () => {
+    if (!pendingResolve?.mask) return;
+    maskValue = input.value;
+    input.value = '';
+    // 更新末尾行显示
+    const last = output.lastElementChild;
+    if (last) last.textContent = pendingResolve.label + '*'.repeat(maskValue.length);
+    output.scrollTop = output.scrollHeight;
+  });
+
+  input.addEventListener('keydown', async e => {
+    // Ctrl+C
+    if (e.ctrlKey && e.key === 'c') {
+      e.preventDefault();
+      if (pendingResolve) { pendingResolve.resolve(null); pendingResolve = null; maskValue = ''; input.value = ''; }
+      cmdRunning = false;
+      appendLine('^C', 'var(--hud-danger)');
+      return;
+    }
+
+    // Backspace in password mode
+    if (pendingResolve?.mask && e.key === 'Backspace') {
+      e.preventDefault();
+      maskValue = maskValue.slice(0, -1);
+      input.value = '';
+      const last = output.lastElementChild;
+      if (last) last.textContent = pendingResolve.label + '*'.repeat(maskValue.length);
+      return;
+    }
+
+    // Pending prompt Enter/Escape
+    if (pendingResolve) {
+      if (e.key === 'Enter') {
+        e.preventDefault();
+        const val = pendingResolve.mask ? maskValue : input.value;
+        const { resolve, mask, label } = pendingResolve;
+        pendingResolve = null;
+        input.value = ''; maskValue = '';
+        const last = output.lastElementChild;
+        if (last) last.textContent = label + (mask ? '*'.repeat(val.length) : val);
+        resolve(val || null);
+      } else if (e.key === 'Escape') {
+        e.preventDefault();
+        pendingResolve.resolve(null); pendingResolve = null; input.value = ''; maskValue = '';
+      }
+      return;
+    }
+
+    // History
+    if (e.key === 'ArrowUp') {
+      e.preventDefault();
+      if (!history.length) return;
+      histIdx = Math.min(histIdx + 1, history.length - 1);
+      input.value = history[history.length - 1 - histIdx];
+      return;
+    }
+    if (e.key === 'ArrowDown') {
+      e.preventDefault();
+      histIdx = Math.max(histIdx - 1, -1);
+      input.value = histIdx < 0 ? '' : history[history.length - 1 - histIdx];
+      return;
+    }
+
+    if (e.key !== 'Enter') return;
+    if (cmdRunning) { input.value = ''; return; }
+
+    const cmd = input.value.trim();
+    input.value = '';
+    histIdx = -1;
+    if (!cmd) return;
+    history.push(cmd);
+
+    appendLine(`${getPrefix()}> ${cmd}`, 'var(--hud-text-dim)');
+    cmdRunning = true;
+
+    const ctx = makeCtx();
+    try {
+      const lines = await runCommand(cmd, ctx);
+      if (lines?.length) {
+        await biosAppend(output, lines);
+      }
+    } catch (err) {
+      appendLine(`[ERR] ${err.message}`, 'var(--hud-danger)');
+    }
+
+    cmdRunning = false;
+    updatePrompt();
+    input.focus();
+  }, true);
+
+  input.focus();
 }

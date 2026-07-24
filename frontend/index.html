@@ -35,7 +35,7 @@
 
   <script type="module">
     import { FLIGHT_TIME, NODE_DELAY } from './js/config.js';
-    import { glitchResolve, typeWrite, sleep } from './js/boot.js';
+    import { glitchResolve, typeWrite, sleep, abortBios } from './js/boot.js';
     import { fetchMapData } from './js/map-data.js';
     import { launchParticles, revealTargets, startNoiseLayer } from './js/map-particles.js';
     import { initMapUI, closePanel, openPanel, clearTerminal, flyToCoord } from './js/map-ui.js';
@@ -231,7 +231,8 @@
                       'hack','sudo','konami','sl','fortune','42','coffee','about','credits',
                       'clear','cls','exit','quit','login','logout','me','set','passwd',
                       'scan','connect','port','crack','exploit','download','disconnect',
-                      'apply','themes','restore','roster','vim','vi','mkdir','touch','rm'];
+                      'apply','themes','restore','roster','vim','vi','mkdir','touch','rm',
+                      'fullscreen','fs'];
     let history = [], histIdx = -1, tabBase = null, tabMatches = [], tabPos = 0;
 
     async function showDosTerminal() {
@@ -329,9 +330,10 @@
     // ── 主键盘监听（Enter / Ctrl+C / 历史 / Tab / 多步骤输入） ──
     dosInput.addEventListener('keydown', async e => {
 
-      // Ctrl+C: abort
+      // Ctrl+C: abort ALL output, stop command, stay in fullscreen
       if (e.ctrlKey && e.key === 'c') {
         e.preventDefault();
+        abortBios(); // stops all typing output immediately
         if (pendingResolve) {
           const { resolve } = pendingResolve;
           pendingResolve = null;
@@ -340,12 +342,7 @@
           resolve(null);
         }
         commandRunning = false;
-        isFullscreen = false;
-        const panel = document.getElementById('info-panel');
-        panel.classList.remove('fullscreen');
-        document.getElementById('map-container').style.opacity = '1';
-        document.getElementById('map-container').style.pointerEvents = '';
-        document.getElementById('close-btn').textContent = '[ABORT]';
+        // do NOT touch isFullscreen — user must EXIT manually
         const terminal = document.getElementById('terminal-content');
         const div = document.createElement('div');
         div.textContent = '^C';
@@ -409,9 +406,9 @@
       if (e.key !== 'Tab') tabBase = null;
       if (e.key !== 'Enter') return;
 
-      // block input while in fullscreen ROSTER mode (only exit commands allowed)
+      // block input while in fullscreen mode (only exit commands allowed)
       const rawCmd = dosInput.value.trim().toLowerCase();
-      if (isFullscreen && rawCmd !== 'exit' && rawCmd !== 'quit' && rawCmd !== 'close') {
+      if (isFullscreen && !['exit','quit','close','clear','cls'].includes(rawCmd)) {
         dosInput.value = '';
         return;
       }
