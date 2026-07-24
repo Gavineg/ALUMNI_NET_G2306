@@ -21,7 +21,8 @@
 input[type="password"],
 input#login-username,
 input.hud-input,
-textarea.hud-input {
+textarea.hud-input,
+input#dos-input {
   text-transform: none;
 }
 

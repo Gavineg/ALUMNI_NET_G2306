@@ -123,15 +123,21 @@
 
       subEl.textContent = '';
       await typeWrite(subEl, 'ALL TARGETS LOCKED. SYSTEM READY.', 16);
-      document.getElementById('reset-btn').classList.add('visible');
 
       initMapUI(chart, initZoom, initCenter);
 
-      // DOS 输入框：加载完成后淡入
-      if (!isMobile) {
-        dosWrap.style.display = 'block';
-        requestAnimationFrame(() => { dosWrap.style.opacity = '1'; });
+      // 重置按钮：打字出现
+      const resetBtn = document.getElementById('reset-btn');
+      resetBtn.classList.add('visible');
+      resetBtn.textContent = '';
+      const resetLabel = '[SYS.RESTORE_VIEW]';
+      for (const ch of resetLabel) {
+        resetBtn.textContent += ch;
+        await sleep(35 + Math.random() * 25);
       }
+
+      // DOS 输入框：再打字出现（按钮先于输入框）
+      if (!isMobile) await showDosTerminal();
     }
 
     // 降级演示数据（无 API 时使用）
@@ -180,13 +186,78 @@
     // ── DOS 彩蛋输入框（仅桌面端显示） ──────────────────────────
     const dosWrap  = document.getElementById('dos-input-wrap');
     const dosInput = document.getElementById('dos-input');
+    const dosPromptEl = document.getElementById('dos-prompt');
+
+    // 命令历史 & Tab 补全
+    const CMD_LIST = ['help','whoami','date','stats','find','ls','dir','cat','matrix',
+                      'hack','sudo','konami','sl','fortune','42','coffee','about','credits',
+                      'clear','cls','exit','quit'];
+    let history = [], histIdx = -1, tabBase = null, tabMatches = [], tabPos = 0;
+
+    async function showDosTerminal() {
+      dosWrap.style.display = 'block';
+      // 先淡入整个 wrap（但 prompt 文字还没有）
+      dosPromptEl.textContent = '';
+      await new Promise(r => requestAnimationFrame(r));
+      dosWrap.style.opacity = '1';
+      await sleep(200);
+
+      // 打字机效果打出提示符
+      const prompt = 'C:\\G2306> ';
+      for (const ch of prompt) {
+        dosPromptEl.textContent += ch;
+        await sleep(40 + Math.random() * 30);
+      }
+
+      // 展开输入框宽度，显示 placeholder，并自动聚焦
+      dosInput.classList.add('ready');
+      dosInput.focus();
+    }
 
     if (!isMobile) {
       dosInput.addEventListener('keydown', async e => {
+        // 上下历史
+        if (e.key === 'ArrowUp') {
+          e.preventDefault();
+          if (history.length === 0) return;
+          histIdx = Math.min(histIdx + 1, history.length - 1);
+          dosInput.value = history[history.length - 1 - histIdx];
+          tabBase = null;
+          return;
+        }
+        if (e.key === 'ArrowDown') {
+          e.preventDefault();
+          if (histIdx <= 0) { histIdx = -1; dosInput.value = ''; tabBase = null; return; }
+          histIdx--;
+          dosInput.value = history[history.length - 1 - histIdx];
+          tabBase = null;
+          return;
+        }
+
+        // Tab 补全
+        if (e.key === 'Tab') {
+          e.preventDefault();
+          const cur = dosInput.value.trim().toLowerCase();
+          if (tabBase === null) {
+            tabBase = cur;
+            tabMatches = CMD_LIST.filter(c => c.startsWith(tabBase));
+            tabPos = 0;
+          }
+          if (tabMatches.length === 0) return;
+          dosInput.value = tabMatches[tabPos % tabMatches.length].toUpperCase();
+          tabPos++;
+          return;
+        }
+
+        // 任何其他键重置 Tab 状态
+        if (e.key !== 'Tab') tabBase = null;
+
         if (e.key !== 'Enter') return;
-        const cmd = dosInput.value;
+        const cmd = dosInput.value.trim();
         dosInput.value = '';
-        if (!cmd.trim()) return;
+        histIdx = -1;
+        if (!cmd) return;
+        history.push(cmd);
 
         const ctx = {
           openPanel,
