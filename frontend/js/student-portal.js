@@ -1,6 +1,7 @@
 import { apiFetch, getSession } from './auth.js';
 import { API_BASE } from './config.js';
 import { runCommand } from './terminal-cmd.js';
+import { buildVFS } from './vfs.js';
 import { biosAppend } from './boot.js';
 
 let profile = {};
@@ -246,6 +247,7 @@ function bindStudentEvents(container) {
   });
 }
 
+
 // ── 内嵌终端 ───────────────────────────────────────────────────
 
 function initPortalTerminal(container, session) {
@@ -254,7 +256,6 @@ function initPortalTerminal(container, session) {
   const promptEl = container.querySelector('#pt-prompt');
   const labelEl  = container.querySelector('#pt-prompt-label');
 
-  // 关闭强制大写
   input.style.textTransform = 'none';
 
   let pendingResolve = null;
@@ -262,61 +263,42 @@ function initPortalTerminal(container, session) {
   let cmdRunning = false;
   const cmdHistory = [];
   let histIdx = -1;
+  let tabState = null; // { base, matches, pos }
 
-  // 从 JWT 取 username slug（用 sub id，避免中文）
+  // JWT sub as userSlug (avoids Chinese chars in paths)
   function getUserSlug() {
     try {
       const tok = localStorage.getItem('g2306_token');
       const p = JSON.parse(atob(tok.split('.')[1]));
-      // name 可能是中文，用 sub（student id）作为目录名
-      return (p.sub || 'user').toString().toLowerCase();
+      return (p.username || p.sub || 'user').toString().toLowerCase().replace(/\s+/g,'_');
     } catch { return 'user'; }
   }
 
   const userSlug = getUserSlug();
+  const home = `/home/${userSlug}`;
 
-  // 当前目录
-  let cwd = `/home/${userSlug}`;
+  // Build VFS
+  const { tree, files, binaries } = buildVFS(userSlug);
 
-  // 服务器虚拟文件系统
-  const SERVER_FS = {
-    '/': ['bin', 'boot', 'dev', 'etc', 'home', 'lib', 'proc', 'root', 'srv', 'tmp', 'usr', 'var'],
-    '/bin': ['bash', 'cat', 'cp', 'echo', 'grep', 'ls', 'mkdir', 'mv', 'rm', 'sh', 'touch'],
-    '/boot': ['grub', 'vmlinuz', 'initrd.img', 'System.map'],
-    '/dev': ['null', 'zero', 'random', 'urandom', 'sda', 'sda1', 'tty', 'pts'],
-    '/etc': ['apt', 'cron.d', 'g2306', 'hosts', 'hostname', 'nginx', 'passwd', 'shadow', 'ssh', 'systemd', 'os-release'],
-    '/etc/apt': ['sources.list', 'trusted.gpg'],
-    '/etc/g2306': ['.env'],
-    '/etc/nginx': ['nginx.conf', 'sites-available', 'sites-enabled'],
-    '/etc/nginx/sites-available': ['default', 'g2306'],
-    '/etc/nginx/sites-enabled': ['default'],
-    '/etc/ssh': ['sshd_config', 'ssh_config', 'ssh_host_rsa_key.pub', 'ssh_host_ed25519_key.pub'],
-    '/etc/systemd': ['system', 'network', 'resolved.conf'],
-    '/etc/systemd/system': ['g2306.service', 'nginx.service', 'sshd.service'],
-    '/home': [userSlug],
-    [`/home/${userSlug}`]: ['.bashrc', '.profile', '.ssh', 'logs'],
-    [`/home/${userSlug}/.ssh`]: ['authorized_keys', 'known_hosts'],
-    [`/home/${userSlug}/logs`]: ['access.log', 'error.log'],
-    '/lib': ['modules', 'systemd', 'x86_64-linux-gnu'],
-    '/proc': ['1', 'cpuinfo', 'meminfo', 'mounts', 'net', 'uptime', 'version'],
-    '/root': ['.bashrc', '.profile', '.ssh'],
-    '/srv': ['http', 'ftp'],
-    '/srv/http': ['index.html', 'static'],
-    '/tmp': ['.ICE-unix', '.X11-unix'],
-    '/usr': ['bin', 'include', 'lib', 'local', 'share', 'sbin'],
-    '/usr/bin': ['curl', 'git', 'node', 'npm', 'python3', 'ssh', 'vim', 'wget'],
-    '/usr/local': ['bin', 'etc', 'lib', 'share'],
-    '/usr/local/bin': ['g2306-node'],
-    '/var': ['log', 'run', 'spool', 'tmp', 'www'],
-    '/var/log': ['auth.log', 'syslog', 'nginx', 'kern.log', 'dpkg.log'],
-    '/var/log/nginx': ['access.log', 'error.log'],
-    '/var/www': ['html'],
-    '/var/www/html': ['index.html'],
-  };
+  // Deleted files (tools the user has rm'd)
+  const DELETED_KEY = `g2306_deleted_${userSlug}`;
+  function getDeleted() { try { return new Set(JSON.parse(sessionStorage.getItem(DELETED_KEY)||'[]')); } catch { return new Set(); } }
+  function saveDeleted(s) { sessionStorage.setItem(DELETED_KEY, JSON.stringify([...s])); }
 
+  // Check if a tool binary exists (not deleted)
+  function toolExists(name) {
+    const paths = [
+      `/bin/${name}`, `/usr/bin/${name}`, `/sbin/${name}`,
+      `/usr/sbin/${name}`, `/usr/local/bin/${name}`
+    ];
+    const deleted = getDeleted();
+    return paths.some(p => (tree[p.slice(0, p.lastIndexOf('/'))]||[]).includes(p.slice(p.lastIndexOf('/')+1)) && !deleted.has(p));
+  }
+
+  let cwd = home;
+
+  // ── Prompt ────────────────────────────────────────────────
   function cwdDisplay() {
-    // 把 Linux 路径映射成终端显示路径，主目录缩写为 ~
-    const home = `/home/${userSlug}`;
     if (cwd === home) return '~';
     if (cwd.startsWith(home + '/')) return '~' + cwd.slice(home.length);
     return cwd;
@@ -324,13 +306,13 @@ function initPortalTerminal(container, session) {
 
   function updatePrompt() {
     const u = (session?.username || session?.name || 'USER').toUpperCase().replace(/\s+/g,'_');
-    const path = cwdDisplay();
-    const text = `${u}@G2306:${path}$`;
-    promptEl.textContent = text + ' ';
+    const text = `${u}@G2306:${cwdDisplay()}$`;
+    promptEl.textContent = text + ' ';
     if (labelEl) labelEl.textContent = text;
   }
   updatePrompt();
 
+  // ── Output ────────────────────────────────────────────────
   function appendLine(text, color) {
     const div = document.createElement('div');
     div.textContent = text;
@@ -339,381 +321,526 @@ function initPortalTerminal(container, session) {
     output.scrollTop = output.scrollHeight;
   }
 
-  // 后台专用命令处理（拦截 ls/cd/pwd，其余走 runCommand）
-  async function handleCmd(raw) {
-    const parts = raw.trim().split(/\s+/);
+  // ── Path resolution ───────────────────────────────────────
+  function resolvePath(arg) {
+    if (!arg || arg === '~') return home;
+    if (arg.startsWith('~/')) return home + arg.slice(1);
+    if (arg.startsWith('/')) return normPath(arg);
+    return normPath(cwd + '/' + arg);
+  }
+
+  function normPath(p) {
+    const parts = p.split('/').filter(Boolean);
+    const out = [];
+    for (const s of parts) { if (s === '..') out.pop(); else if (s !== '.') out.push(s); }
+    return '/' + out.join('/');
+  }
+
+  function isDir(p) { return p === '/' || !!tree[p]; }
+
+  function parentAndBase(p) {
+    const i = p.lastIndexOf('/');
+    return [i === 0 ? '/' : p.slice(0, i), p.slice(i + 1)];
+  }
+
+  // ── Tab completion ────────────────────────────────────────
+  function tabComplete(val) {
+    const parts = val.trimStart().split(/\s+/);
     const cmd = parts[0].toLowerCase();
-    const arg = parts.slice(1).join(' ');
+    const arg = parts.length > 1 ? parts[parts.length - 1] : null;
 
-    if (cmd === 'pwd') {
-      appendLine(cwd);
-      return;
+    // Complete command name
+    if (parts.length === 1) {
+      const CMDS = ['ls','cd','cat','pwd','vim','vi','nano','rm','mkdir','rmdir',
+        'touch','cp','mv','chmod','chown','grep','find','echo','which','uname',
+        'whoami','id','ps','top','df','du','free','uptime','clear','cls','exit',
+        'history','env','printenv','ping','curl','wget','ssh','scp','git','node',
+        'npm','python3','systemctl','service','sudo','su','crontab','tail','head',
+        'less','more','sort','uniq','wc','diff','tar','gzip','gunzip','netstat',
+        'ss','ifconfig','ip','iptables','ufw','fail2ban-client'];
+      const base = val.trimStart().toLowerCase();
+      const matches = CMDS.filter(c => c.startsWith(base));
+      return { matches, prefix: '' };
     }
 
-    if (cmd === 'cd') {
-      const target = arg.trim() || `/home/${userSlug}`;
-      let next = target.startsWith('/') ? target : (cwd + '/' + target).replace(/\/+/g, '/');
-      const parts2 = next.split('/').filter(Boolean);
-      const resolved = [];
-      for (const p of parts2) { if (p === '..') resolved.pop(); else resolved.push(p); }
-      next = '/' + resolved.join('/');
-      if (next !== '/' && !SERVER_FS[next]) {
-        appendLine(`bash: cd: ${target}: No such file or directory`, 'var(--hud-danger)');
-        return;
-      }
-      cwd = next || '/';
-      updatePrompt();
-      return;
+    // Complete path argument
+    const argRaw = arg || '';
+    let dirPart, filePart;
+    if (argRaw.includes('/')) {
+      const lastSlash = argRaw.lastIndexOf('/');
+      dirPart = argRaw.slice(0, lastSlash) || '/';
+      filePart = argRaw.slice(lastSlash + 1);
+    } else {
+      dirPart = '';
+      filePart = argRaw;
     }
 
-    if (cmd === 'ls' || cmd === 'dir') {
-      const entries = SERVER_FS[cwd];
-      if (!entries) { appendLine(`ls: cannot access '${cwd}': No such file or directory`, 'var(--hud-danger)'); return; }
-      entries.forEach(e => appendLine(e));
-      return;
-    }
-
-    if (cmd === 'cat') {
-      const filePath = arg.startsWith('/') ? arg : (cwd + '/' + arg).replace(/\/+/g,'/');
-
-      // 静态文件内容
-      const now = new Date();
-      const ts = () => now.toISOString().replace('T',' ').slice(0,19);
-      const staticFiles = {
-        [`/home/${userSlug}/.bashrc`]: [
-          `# ~/.bashrc: executed by bash(1) for non-login shells.`,
-          `export PS1='\\u@G2306:\\w$ '`,
-          `export PATH="$HOME/.local/bin:$PATH"`,
-          `alias ll='ls -alF'`,
-          `alias la='ls -A'`,
-          `alias grep='grep --color=auto'`,
-        ],
-        [`/home/${userSlug}/.ssh/authorized_keys`]: [
-          `# Authorized SSH keys for ${userSlug}@g2306`,
-          `# ssh-rsa AAAA... (no keys configured)`,
-        ],
-        [`/home/${userSlug}/.ssh/known_hosts`]: [
-          `|1|hash/== ecdsa-sha2-nistp256 AAAA...`,
-          `github.com ssh-rsa AAAA...`,
-        ],
-        [`/home/${userSlug}/logs/access.log`]: [
-          `${ts()} [INFO] SSH login from 192.168.1.1 as ${userSlug}`,
-          `${ts()} [INFO] Session opened for user ${userSlug}`,
-          `${ts()} [INFO] Command executed: ls /home`,
-          `${ts()} [WARN] Failed auth attempt from 185.220.101.32`,
-          `${ts()} [INFO] Session closed`,
-        ],
-        [`/home/${userSlug}/logs/error.log`]: [
-          `${ts()} [ERROR] Connection refused: port 8080 not bound`,
-          `${ts()} [WARN]  Disk usage at 74% on /dev/sda1`,
-          `${ts()} [INFO]  Service g2306-node restarted`,
-        ],
-        '/etc/hosts': [
-          `127.0.0.1   localhost`,
-          `127.0.1.1   g2306-node`,
-          `::1         localhost ip6-localhost ip6-loopback`,
-        ],
-        '/etc/passwd': [
-          `root:x:0:0:root:/root:/bin/bash`,
-          `daemon:x:1:1:daemon:/usr/sbin:/usr/sbin/nologin`,
-          `${userSlug}:x:1000:1000:,,,:/home/${userSlug}:/bin/bash`,
-        ],
-        '/var/log/auth.log': [
-          `${ts()} g2306-node sshd[1337]: Accepted publickey for ${userSlug}`,
-          `${ts()} g2306-node sshd[1337]: pam_unix(sshd:session): session opened`,
-          `${ts()} g2306-node sudo: ${userSlug} : TTY=pts/0 ; PWD=/home/${userSlug}`,
-        ],
-        '/var/log/syslog': [
-          `${ts()} g2306-node kernel: [0.000000] Initializing cgroup subsys`,
-          `${ts()} g2306-node systemd[1]: Started G2306 Node Service.`,
-          `${ts()} g2306-node cron[892]: (CRON) INFO (pidfile fd = 3)`,
-        ],
-        '/etc/hostname': [`g2306-node`],
-        '/etc/os-release': [
-          `NAME="Debian GNU/Linux"`,
-          `VERSION_ID="12"`,
-          `ID=debian`,
-          `PRETTY_NAME="Debian GNU/Linux 12 (bookworm)"`,
-        ],
-        '/etc/nginx/nginx.conf': [
-          `user www-data;`,
-          `worker_processes auto;`,
-          `error_log /var/log/nginx/error.log;`,
-          `events { worker_connections 1024; }`,
-          `http {`,
-          `  include /etc/nginx/sites-enabled/*;`,
-          `  server_tokens off;`,
-          `}`,
-        ],
-        '/etc/nginx/sites-available/g2306': [
-          `server {`,
-          `  listen 80;`,
-          `  server_name g2306-node;`,
-          `  root /var/www/html;`,
-          `  location /api/ { proxy_pass http://127.0.0.1:3000; }`,
-          `}`,
-        ],
-        '/etc/ssh/sshd_config': [
-          `Port 22`,
-          `PermitRootLogin no`,
-          `PasswordAuthentication no`,
-          `PubkeyAuthentication yes`,
-          `AuthorizedKeysFile .ssh/authorized_keys`,
-          `X11Forwarding no`,
-        ],
-        '/etc/systemd/system/g2306.service': [
-          `[Unit]`,
-          `Description=G2306 Node API Service`,
-          `After=network.target`,
-          ``,
-          `[Service]`,
-          `Type=simple`,
-          `User=${userSlug}`,
-          `WorkingDirectory=/usr/local/bin`,
-          `ExecStart=/usr/bin/node /usr/local/bin/g2306-node`,
-          `Restart=always`,
-          ``,
-          `[Install]`,
-          `WantedBy=multi-user.target`,
-        ],
-        '/proc/uptime': [`${Math.floor(Math.random()*864000 + 86400)}.00 ${Math.floor(Math.random()*400000)}.00`],
-        '/proc/version': [`Linux version 6.1.0-21-amd64 (debian-kernel@lists.debian.org) (gcc-12 12.2.0) #1 SMP PREEMPT_DYNAMIC`],
-        '/proc/meminfo': [
-          `MemTotal:        2048000 kB`,
-          `MemFree:          412800 kB`,
-          `MemAvailable:     819200 kB`,
-          `Buffers:           65536 kB`,
-          `Cached:           409600 kB`,
-        ],
-        '/var/log/nginx/access.log': [
-          `192.168.1.1 - - [${ts()}] "GET / HTTP/1.1" 200 1024`,
-          `10.0.0.2 - - [${ts()}] "GET /api/map/data HTTP/1.1" 200 4096`,
-          `185.220.101.32 - - [${ts()}] "GET /.env HTTP/1.1" 404 0`,
-        ],
-        '/var/log/nginx/error.log': [
-          `${ts()} [warn] 892#892: conflicting server name "g2306-node"`,
-        ],
-        '/var/www/html/index.html': [
-          `<!DOCTYPE html><html><head><title>G2306</title></head>`,
-          `<body><h1>G2306 Node</h1><p>Alumni Network Node</p></body></html>`,
-        ],
-        [`/home/${userSlug}/.profile`]: [
-          `# ~/.profile: executed by the command interpreter for login shells.`,
-          `if [ -n "$BASH_VERSION" ]; then`,
-          `  if [ -f "$HOME/.bashrc" ]; then . "$HOME/.bashrc"; fi`,
-          `fi`,
-          `export PATH="$HOME/bin:$HOME/.local/bin:$PATH"`,
-        ],
-      };
-
-      if (filePath === '/etc/g2306/.env') {
-        const tok = localStorage.getItem('g2306_token');
-        let d = {};
-        if (tok) {
-          try { const r = await fetch(`${API_BASE}/api/student/me`, { headers:{Authorization:`Bearer ${tok}`} }); if(r.ok) d = await r.json(); } catch {}
-        }
-        appendLine('# G2306 NODE SERVER CONFIGURATION');
-        appendLine(`SERVER_HOSTNAME=${d.server_hostname||''}`);
-        appendLine(`SERVER_PORTS=${d.server_ports||'22,80'}`);
-        appendLine(`SERVER_DIFFICULTY=${d.server_difficulty||2}`);
-        appendLine(`SERVER_THEME=${d.server_theme||'DEFAULT'}`);
-        appendLine(`HACK_LOOT=${d.hack_loot ? '"'+d.hack_loot.slice(0,60)+'"' : ''}`);
-        return;
-      }
-
-      if (filePath === '/etc/shadow') {
-        appendLine(`cat: /etc/shadow: Permission denied`, 'var(--hud-danger)');
-        return;
-      }
-
-      if (staticFiles[filePath]) {
-        staticFiles[filePath].forEach(l => appendLine(l));
-        return;
-      }
-
-      // 判断路径是否是已知目录
-      if (SERVER_FS[filePath]) {
-        appendLine(`cat: ${arg}: Is a directory`, 'var(--hud-danger)');
-        return;
-      }
-
-      // 已知的二进制/不可读文件
-      const binDirs = ['/bin', '/usr/bin', '/lib', '/usr/local/bin', '/boot', '/dev'];
-      if (binDirs.some(d => filePath.startsWith(d + '/') || filePath === d)) {
-        appendLine(`cat: ${arg}: binary file, use strings(1) to inspect`, 'var(--hud-danger)');
-        return;
-      }
-
-      appendLine(`cat: ${arg}: No such file or directory`, 'var(--hud-danger)');
-      return;
-    }
-
-    if (cmd === 'clear' || cmd === 'cls') { output.innerHTML = ''; return; }
-
-    if (cmd === 'vim' || cmd === 'vi' || cmd === 'nano') {
-      // vim /etc/g2306/.env — 编辑服务器配置
-      const filePath = arg.startsWith('/') ? arg : (cwd + '/' + arg).replace(/\/+/g,'/');
-      if (filePath !== '/etc/g2306/.env') {
-        appendLine(`${cmd}: ${arg}: permission denied`, 'var(--hud-danger)');
-        return;
-      }
-      const tok = localStorage.getItem('g2306_token');
-      if (!tok) { appendLine('permission denied: not authenticated', 'var(--hud-danger)'); return; }
-      let d = {};
-      try { const r = await fetch(`${API_BASE}/api/student/me`, { headers:{Authorization:`Bearer ${tok}`} }); if(r.ok) d = await r.json(); } catch {}
-
-      appendLine(`"/etc/g2306/.env"  -- INSERT --`);
-      appendLine('# G2306 NODE SERVER CONFIGURATION');
-      appendLine('# Edit values, then type :w KEY=VALUE ... to save');
-      appendLine(`SERVER_HOSTNAME=${d.server_hostname||''}`);
-      appendLine(`SERVER_PORTS=${d.server_ports||'22,80'}`);
-      appendLine(`SERVER_DIFFICULTY=${d.server_difficulty||2}`);
-      appendLine(`SERVER_THEME=${d.server_theme||'DEFAULT'}`);
-      appendLine(`HACK_LOOT=${d.hack_loot ? '"'+d.hack_loot.slice(0,60)+'"' : ''}`);
-      appendLine('');
-
-      // 等待 :w 输入
-      const userInput = await new Promise(resolve => {
-        appendLine(':');
-        pendingResolve = { resolve, mask: false, label: ':' };
-        maskValue = '';
-        input.value = '';
-        input.focus();
+    const resolvedDir = dirPart ? resolvePath(dirPart) : cwd;
+    const entries = tree[resolvedDir] || [];
+    const deleted = getDeleted();
+    const matches = entries
+      .filter(e => e.startsWith(filePart) && !deleted.has(resolvedDir + '/' + e))
+      .map(e => {
+        const full = resolvedDir + '/' + e;
+        return isDir(full) ? e + '/' : e;
       });
 
-      if (!userInput) { appendLine('"[No Write Since Last Change]"'); return; }
-      const vcmd = userInput.trim().toLowerCase();
-      if (vcmd === 'q' || vcmd === 'q!') { appendLine('"[File not saved]"'); return; }
-      if (!vcmd.startsWith('w')) { appendLine(`E492: Not an editor command: ${userInput}`, 'var(--hud-danger)'); return; }
+    // Rebuild prefix (everything before the last path component being completed)
+    const cmdPrefix = parts.slice(0, -1).join(' ') + ' ';
+    const pathPrefix = dirPart ? (argRaw.slice(0, argRaw.lastIndexOf('/') + 1)) : '';
+    return { matches, prefix: cmdPrefix + pathPrefix };
+  }
 
+
+  // ── Binary file display ───────────────────────────────────
+  function fakeBinaryOutput(filePath) {
+    let seed = 0;
+    for (let i = 0; i < filePath.length; i++) seed = (seed * 31 + filePath.charCodeAt(i)) & 0xffffffff;
+    const lines = [`ELF binary — use strings(1) or hexdump(1) to inspect`, ``];
+    for (let row = 0; row < 8; row++) {
+      let hex = '', ascii = '';
+      for (let col = 0; col < 16; col++) {
+        seed = (seed * 1664525 + 1013904223) & 0xffffffff;
+        const byte = (seed >>> 24) & 0xff;
+        hex += byte.toString(16).padStart(2,'0') + (col === 7 ? '  ' : ' ');
+        ascii += (byte >= 0x20 && byte < 0x7f) ? String.fromCharCode(byte) : '.';
+      }
+      lines.push(`${(row*16).toString(16).padStart(8,'0')}  ${hex} |${ascii}|`);
+    }
+    lines.push(`...`);
+    return lines;
+  }
+
+
+  // ── Command handler ───────────────────────────────────────
+  async function handleCmd(raw) {
+    const deleted = getDeleted();
+    const tokens = raw.trim().split(/\s+/);
+    const cmd = tokens[0].toLowerCase();
+    const args = tokens.slice(1);
+    const arg = args.join(' ');
+    const arg1 = args[0] || '';
+
+    // Check if core tool is destroyed
+    const toolMap = { ls:'ls',cat:'cat',rm:'rm',mkdir:'mkdir',cp:'cp',mv:'mv',
+      chmod:'chmod',grep:'grep',find:'find',vim:'vim',nano:'nano' };
+    if (toolMap[cmd] && !toolExists(toolMap[cmd])) {
+      appendLine(`-bash: ${cmd}: command not found`, 'var(--hud-danger)'); return;
+    }
+
+    if (cmd === 'pwd') { appendLine(cwd); return; }
+    if (cmd === 'clear' || cmd === 'cls') { output.innerHTML = ''; return; }
+    if (cmd === 'whoami') { appendLine(session?.username || userSlug); return; }
+    if (cmd === 'id') {
+      const u = session?.username || userSlug;
+      appendLine('uid=1000(' + u + ') gid=1000(' + u + ') groups=1000(' + u + '),27(sudo)'); return;
+    }
+    if (cmd === 'uname') {
+      if (arg === '-a') appendLine('Linux g2306-node 6.1.0-21-amd64 #1 SMP PREEMPT_DYNAMIC x86_64 GNU/Linux');
+      else if (arg === '-r') appendLine('6.1.0-21-amd64');
+      else appendLine('Linux');
+      return;
+    }
+    if (cmd === 'hostname') { appendLine(arg === '-I' ? '10.0.0.10 ' : 'g2306-node'); return; }
+    if (cmd === 'uptime') { appendLine(' ' + new Date().toTimeString().slice(0,8) + ' up 3 days,  4:22,  1 user,  load average: 0.12, 0.08, 0.05'); return; }
+    if (cmd === 'df') {
+      appendLine('Filesystem      Size  Used Avail Use% Mounted on');
+      appendLine('/dev/sda1        20G   14G  4.8G  75% /');
+      appendLine('tmpfs           1.0G     0  1.0G   0% /dev/shm');
+      return;
+    }
+    if (cmd === 'free') {
+      appendLine('               total        used        free      shared  buff/cache   available');
+      appendLine('Mem:         2048000      614400      412800       20480      614400      819200');
+      appendLine('Swap:         524288           0      524288');
+      return;
+    }
+    if (cmd === 'env' || cmd === 'printenv') {
+      appendLine('PATH=/usr/local/sbin:/usr/local/bin:/usr/sbin:/usr/bin:/sbin:/bin');
+      appendLine('HOME=' + home); appendLine('USER=' + userSlug);
+      appendLine('SHELL=/bin/bash'); appendLine('LANG=en_US.UTF-8'); return;
+    }
+    if (cmd === 'history') { cmdHistory.forEach((c,i) => appendLine('  ' + String(i+1).padStart(4) + '  ' + c)); return; }
+    if (cmd === 'echo') { appendLine(args.join(' ').replace(/^["']|["']$/g,'')); return; }
+    if (cmd === 'exit' || cmd === 'logout') { appendLine('logout'); return; }
+    if (cmd === 'which') {
+      if (!arg1) { appendLine('which: missing argument','var(--hud-danger)'); return; }
+      for (const dir of ['/usr/local/bin','/usr/bin','/bin','/usr/sbin','/sbin']) {
+        if ((tree[dir]||[]).includes(arg1) && !deleted.has(dir + '/' + arg1)) { appendLine(dir + '/' + arg1); return; }
+      }
+      appendLine(arg1 + ' not found','var(--hud-danger)'); return;
+    }
+    if (cmd === 'ps') {
+      appendLine('  PID TTY          TIME CMD');
+      appendLine(' 1000 pts/0    00:00:00 bash');
+      appendLine(' 1001 pts/0    00:00:00 node');
+      appendLine(' 1002 pts/0    00:00:00 ps');
+      return;
+    }
+    if (cmd === 'ping') {
+      if (!arg1) { appendLine('ping: missing host operand','var(--hud-danger)'); return; }
+      appendLine('PING ' + arg1 + ': 56 data bytes');
+      appendLine('64 bytes from ' + arg1 + ': icmp_seq=1 ttl=64 time=0.123 ms');
+      appendLine('--- ' + arg1 + ' ping statistics ---');
+      appendLine('1 packets transmitted, 1 received, 0% packet loss');
+      return;
+    }
+
+    // cd
+    if (cmd === 'cd') {
+      const dest = resolvePath(arg1 || home);
+      if (!isDir(dest)) { appendLine('bash: cd: ' + arg1 + ': No such file or directory', 'var(--hud-danger)'); return; }
+      cwd = dest; updatePrompt(); return;
+    }
+
+    // ls
+    if (cmd === 'ls' || cmd === 'dir') {
+      const target = arg1 && !arg1.startsWith('-') ? resolvePath(arg1) : cwd;
+      if (!isDir(target)) { appendLine('ls: cannot access ' + "'" + arg1 + "'" + ': No such file or directory', 'var(--hud-danger)'); return; }
+      const entries = tree[target] || [];
+      const showHidden = args.some(a => a.startsWith('-') && a.includes('a'));
+      const longFmt = args.some(a => a.startsWith('-') && a.includes('l'));
+      const filtered = showHidden ? entries : entries.filter(e => !e.startsWith('.'));
+      if (longFmt) {
+        appendLine('total ' + filtered.length * 4);
+        for (const e of filtered) {
+          const full = (target === '/' ? '' : target) + '/' + e;
+          const d = isDir(full) ? 'd' : '-';
+          const x = (binaries.has(full) || e.endsWith('.sh')) ? 'x' : '-';
+          const del = deleted.has(full) ? ' [DELETED]' : '';
+          appendLine(d + 'rwxr-x' + (d === 'd' ? 'r-x' : 'r--') + ' 1 ' + userSlug + ' ' + userSlug + '  4096 Jan 15 10:00 ' + e + del);
+        }
+      } else {
+        filtered.forEach(e => appendLine(e + (deleted.has((target === '/' ? '' : target) + '/' + e) ? ' [DELETED]' : '')));
+      }
+      return;
+    }
+
+    // cat
+    if (cmd === 'cat') {
+      if (!arg1) { appendLine('cat: missing operand', 'var(--hud-danger)'); return; }
+      const fp = resolvePath(arg1);
+      if (deleted.has(fp)) { appendLine('cat: ' + arg1 + ': No such file or directory', 'var(--hud-danger)'); return; }
+      if (fp === '/etc/shadow' || fp === '/etc/gshadow') { appendLine('cat: ' + arg1 + ': Permission denied', 'var(--hud-danger)'); return; }
+      if (isDir(fp)) { appendLine('cat: ' + arg1 + ': Is a directory', 'var(--hud-danger)'); return; }
+      if (binaries.has(fp)) { fakeBinaryOutput(fp).forEach(l => appendLine(l, l.match(/^[0-9a-f]{8}/) ? 'var(--hud-text-dim)' : undefined)); return; }
+      if (fp === '/etc/g2306/.env') {
+        const tok = localStorage.getItem('g2306_token');
+        let d = {};
+        try { const r = await fetch(API_BASE + '/api/student/me', {headers:{Authorization:'Bearer ' + tok}}); if(r.ok) d = await r.json(); } catch {}
+        appendLine('# G2306 NODE SERVER CONFIGURATION');
+        appendLine('SERVER_HOSTNAME=' + (d.server_hostname||''));
+        appendLine('SERVER_PORTS=' + (d.server_ports||'22,80'));
+        appendLine('SERVER_DIFFICULTY=' + (d.server_difficulty||2));
+        appendLine('SERVER_THEME=' + (d.server_theme||'DEFAULT'));
+        appendLine('HACK_LOOT=' + (d.hack_loot ? '"' + d.hack_loot.slice(0,60) + '"' : ''));
+        return;
+      }
+      if (files[fp]) { files[fp].forEach(l => appendLine(l)); return; }
+      const [par, base] = parentAndBase(fp);
+      if ((tree[par]||[]).includes(base)) { appendLine('cat: ' + arg1 + ': Permission denied','var(--hud-danger)'); return; }
+      appendLine('cat: ' + arg1 + ': No such file or directory', 'var(--hud-danger)'); return;
+    }
+
+    // mkdir
+    if (cmd === 'mkdir') {
+      if (!arg1) { appendLine('mkdir: missing operand','var(--hud-danger)'); return; }
+      const fp = resolvePath(arg1);
+      if (isDir(fp)) { appendLine("mkdir: cannot create directory '" + arg1 + "': File exists",'var(--hud-danger)'); return; }
+      const [par, base] = parentAndBase(fp);
+      if (!isDir(par)) { appendLine("mkdir: cannot create directory '" + arg1 + "': No such file or directory",'var(--hud-danger)'); return; }
+      tree[par] = [...(tree[par]||[]), base]; tree[fp] = [];
+      return;
+    }
+
+    // touch
+    if (cmd === 'touch') {
+      if (!arg1) { appendLine('touch: missing file operand','var(--hud-danger)'); return; }
+      const fp = resolvePath(arg1);
+      const [par, base] = parentAndBase(fp);
+      if (!isDir(par)) { appendLine("touch: cannot touch '" + arg1 + "': No such file or directory",'var(--hud-danger)'); return; }
+      if (!(tree[par]||[]).includes(base)) tree[par] = [...(tree[par]||[]), base];
+      if (!files[fp]) files[fp] = [];
+      return;
+    }
+
+    // rm
+    if (cmd === 'rm') {
+      const rflag = args.some(a => a.startsWith('-') && a.includes('r'));
+      const targets = args.filter(a => !a.startsWith('-'));
+      if (!targets.length) { appendLine('rm: missing operand','var(--hud-danger)'); return; }
+      const del = getDeleted();
+      for (const t of targets) {
+        const fp = resolvePath(t);
+        if (isDir(fp) && !rflag) { appendLine("rm: cannot remove '" + t + "': Is a directory",'var(--hud-danger)'); continue; }
+        const [par, base] = parentAndBase(fp);
+        if (!(tree[par]||[]).includes(base) && !files[fp] && !binaries.has(fp)) {
+          appendLine("rm: cannot remove '" + t + "': No such file or directory",'var(--hud-danger)'); continue;
+        }
+        del.add(fp);
+        if (rflag && isDir(fp)) {
+          for (const k of Object.keys(tree)) { if (k.startsWith(fp + '/') || k === fp) del.add(k); }
+          for (const k of Object.keys(files)) { if (k.startsWith(fp + '/') || k === fp) del.add(k); }
+        }
+      }
+      saveDeleted(del);
+      return;
+    }
+
+    // vim / vi / nano
+    if (cmd === 'vim' || cmd === 'vi' || cmd === 'nano') {
+      if (!arg1) { appendLine(cmd + ': missing filename','var(--hud-danger)'); return; }
+      const fp = resolvePath(arg1);
+      if (fp !== '/etc/g2306/.env') { appendLine(cmd + ': ' + arg1 + ': permission denied','var(--hud-danger)'); return; }
+      const tok = localStorage.getItem('g2306_token');
+      if (!tok) { appendLine('permission denied: not authenticated','var(--hud-danger)'); return; }
+      let d = {};
+      try { const r = await fetch(API_BASE + '/api/student/me',{headers:{Authorization:'Bearer ' + tok}}); if(r.ok) d=await r.json(); } catch {}
+      appendLine('"/etc/g2306/.env"  -- INSERT --');
+      appendLine('SERVER_HOSTNAME=' + (d.server_hostname||''));
+      appendLine('SERVER_PORTS=' + (d.server_ports||'22,80'));
+      appendLine('SERVER_DIFFICULTY=' + (d.server_difficulty||2));
+      appendLine('SERVER_THEME=' + (d.server_theme||'DEFAULT'));
+      appendLine('HACK_LOOT=' + (d.hack_loot ? '"' + d.hack_loot.slice(0,60) + '"' : ''));
+      appendLine('');
+      const userInput = await new Promise(resolve => {
+        appendLine(':'); pendingResolve = { resolve, mask: false, label: ':' };
+        maskValue = ''; input.value = ''; input.focus();
+      });
+      if (!userInput) { appendLine('"[No Write Since Last Change]"'); return; }
+      const vc = userInput.trim().toLowerCase();
+      if (vc === 'q' || vc === 'q!') { appendLine('"[File not saved]"'); return; }
+      if (!vc.startsWith('w')) { appendLine('E492: Not an editor command: ' + userInput,'var(--hud-danger)'); return; }
       const raw2 = userInput.replace(/^wq?/i,'').trim();
       const payload = {};
-      const fieldMap = { SERVER_HOSTNAME:'server_hostname', SERVER_PORTS:'server_ports', SERVER_DIFFICULTY:'server_difficulty', SERVER_THEME:'server_theme', HACK_LOOT:'hack_loot' };
+      const fm = {SERVER_HOSTNAME:'server_hostname',SERVER_PORTS:'server_ports',SERVER_DIFFICULTY:'server_difficulty',SERVER_THEME:'server_theme',HACK_LOOT:'hack_loot'};
       for (const part of raw2.split(/\s+/)) {
-        const [k,...vs] = part.split('=');
-        const v = vs.join('=').replace(/^"|"$/g,'');
-        if (k && vs.length && fieldMap[k.toUpperCase()]) {
-          const fk = k.toUpperCase();
-          payload[fieldMap[fk]] = fk==='SERVER_DIFFICULTY' ? Math.min(5,Math.max(1,parseInt(v)||2)) : v;
-        }
+        const eqIdx = part.indexOf('=');
+        if (eqIdx < 0) continue;
+        const k = part.slice(0, eqIdx).toUpperCase();
+        const v = part.slice(eqIdx+1).replace(/^"|"$/g,'');
+        if (fm[k]) payload[fm[k]] = k === 'SERVER_DIFFICULTY' ? Math.min(5,Math.max(1,parseInt(v)||2)) : v;
       }
       if (!Object.keys(payload).length) { appendLine('"[No changes to write]"'); return; }
       try {
-        const res = await fetch(`${API_BASE}/api/student/me`, {
-          method:'PUT', headers:{'Content-Type':'application/json',Authorization:`Bearer ${tok}`},
-          body: JSON.stringify(payload)
-        });
-        if (!res.ok) { appendLine('write failed: permission denied', 'var(--hud-danger)'); return; }
-        appendLine(`"/etc/g2306/.env" written — updated: ${Object.keys(payload).join(', ')}`, 'var(--hud-primary)');
-      } catch { appendLine('write failed: connection error', 'var(--hud-danger)'); }
+        const res = await fetch(API_BASE + '/api/student/me',{method:'PUT',headers:{'Content-Type':'application/json',Authorization:'Bearer ' + tok},body:JSON.stringify(payload)});
+        appendLine(res.ok ? '"/etc/g2306/.env" written' : 'write failed','var(--hud-danger)');
+      } catch { appendLine('write failed: connection error','var(--hud-danger)'); }
       return;
     }
 
-    // 其余命令（help, whoami, me, set, passwd, stats 等）走公用 runCommand
-    const ctx = makeCtx();
-    try {
-      const lines = await runCommand(raw, ctx);
-      if (lines?.length) await biosAppend(output, lines);
-    } catch (err) {
-      appendLine(`[ERR] ${err.message}`, 'var(--hud-danger)');
+    // grep
+    if (cmd === 'grep') {
+      const patIdx = args.findIndex(a => !a.startsWith('-'));
+      if (patIdx < 0) { appendLine('usage: grep [OPTION]... PATTERN [FILE]...','var(--hud-danger)'); return; }
+      const pat = args[patIdx];
+      const fileArgs = args.slice(patIdx + 1);
+      if (!fileArgs.length) { appendLine('(reading from stdin — not supported)','var(--hud-text-dim)'); return; }
+      try {
+        const re = new RegExp(pat, 'i');
+        for (const fa of fileArgs) {
+          const fp = resolvePath(fa);
+          for (const line of (files[fp]||[])) { if (re.test(line)) appendLine(fa + ': ' + line); }
+        }
+      } catch { appendLine('grep: invalid regex','var(--hud-danger)'); }
+      return;
     }
-  }
 
-  // ctx for runCommand — portal mode, no map/fullscreen
-  function makeCtx() {
-    return {
-      openPanel: () => {}, closePanel: () => {},
-      clearTerminal: () => { output.innerHTML = ''; },
-      getMapData: () => null, flyTo: () => {}, setFullscreen: () => {},
+    // tail / head
+    if (cmd === 'tail' || cmd === 'head') {
+      const nFlag = args.indexOf('-n');
+      const n = nFlag >= 0 ? (parseInt(args[nFlag+1])||10) : 10;
+      const fileArg = args.find(a => !a.startsWith('-') && (nFlag < 0 || a !== args[nFlag+1]));
+      if (!fileArg) { appendLine(cmd + ': missing file operand','var(--hud-danger)'); return; }
+      const fp = resolvePath(fileArg);
+      const lines2 = files[fp] || [];
+      (cmd === 'tail' ? lines2.slice(-n) : lines2.slice(0,n)).forEach(l => appendLine(l));
+      return;
+    }
+
+    // chmod / chown
+    if (cmd === 'chmod' || cmd === 'chown') {
+      if (args.length < 2) { appendLine(cmd + ': missing operand','var(--hud-danger)'); return; }
+      return; // success, no output
+    }
+
+    // cp / mv
+    if (cmd === 'cp' || cmd === 'mv') {
+      if (args.length < 2) { appendLine(cmd + ': missing operand','var(--hud-danger)'); return; }
+      const src = resolvePath(args[0]);
+      const dst = resolvePath(args[1]);
+      const srcLines = files[src];
+      if (!srcLines && !isDir(src)) { appendLine(cmd + ": '" + args[0] + "': No such file or directory",'var(--hud-danger)'); return; }
+      const [dstPar, dstBase] = parentAndBase(dst);
+      if (!isDir(dstPar)) { appendLine(cmd + ": '" + args[1] + "': No such file or directory",'var(--hud-danger)'); return; }
+      files[dst] = srcLines ? [...srcLines] : [];
+      if (!(tree[dstPar]||[]).includes(dstBase)) tree[dstPar] = [...(tree[dstPar]||[]), dstBase];
+      if (cmd === 'mv') { const del = getDeleted(); del.add(src); saveDeleted(del); }
+      return;
+    }
+
+    // systemctl
+    if (cmd === 'systemctl') {
+      const sub = arg1, svc = args[1] || 'g2306';
+      if (sub === 'status') {
+        appendLine('● ' + svc + '.service - G2306 Alumni Network Node');
+        appendLine('   Loaded: loaded (/etc/systemd/system/' + svc + '.service; enabled)');
+        appendLine('   Active: active (running) since ' + new Date().toUTCString());
+        appendLine('  Process: 1001 ExecStart=/usr/bin/node index.js');
+      } else if (sub === 'restart' || sub === 'start') {
+        // silent success
+      } else if (sub === 'stop') {
+        appendLine('Warning: service stopped.','var(--hud-danger)');
+      } else { appendLine('Unknown subcommand: ' + sub,'var(--hud-danger)'); }
+      return;
+    }
+
+    // ssh
+    if (cmd === 'ssh') { appendLine('ssh: connect to host ' + arg1 + ' port 22: Connection refused','var(--hud-danger)'); return; }
+
+    // sudo
+    if (cmd === 'sudo') {
+      appendLine('[sudo] password for ' + (session?.username || userSlug) + ': ');
+      const pw = await new Promise(resolve => {
+        pendingResolve = { resolve, mask: true, label: '[sudo] password: ' };
+        maskValue = ''; input.value = ''; input.focus();
+      });
+      if (pw) appendLine('Sorry, try again.','var(--hud-danger)');
+      return;
+    }
+
+    // find
+    if (cmd === 'find') {
+      const base2 = arg1 && !arg1.startsWith('-') ? resolvePath(arg1) : cwd;
+      const nameFlag = args.indexOf('-name');
+      const pat2 = nameFlag >= 0 ? args[nameFlag+1] : null;
+      const re2 = pat2 ? new RegExp('^' + pat2.replace(/\*/g,'.*').replace(/\?/g,'.') + '$') : null;
+      function findIn(dir) {
+        appendLine(dir);
+        for (const e of (tree[dir]||[])) {
+          const fp = (dir === '/' ? '' : dir) + '/' + e;
+          if (!re2 || re2.test(e)) appendLine(fp);
+          if (isDir(fp)) findIn(fp);
+        }
+      }
+      findIn(base2);
+      return;
+    }
+
+    // delegate unknown commands to main terminal runCommand
+    const ctx = {
       getToken: () => localStorage.getItem('g2306_token'),
-      setToken: (t) => { if (t) localStorage.setItem('g2306_token', t); else localStorage.removeItem('g2306_token'); },
+      setToken: (t) => { if(t) localStorage.setItem('g2306_token',t); else localStorage.removeItem('g2306_token'); },
       promptLine: (label) => new Promise(resolve => {
-        appendLine(label);
-        pendingResolve = { resolve, mask: false, label };
+        appendLine(label); pendingResolve = { resolve, mask: false, label };
         maskValue = ''; input.value = ''; input.focus();
       }),
       promptPassword: (label) => new Promise(resolve => {
-        appendLine(label);
-        pendingResolve = { resolve, mask: true, label };
+        appendLine(label); pendingResolve = { resolve, mask: true, label };
         maskValue = ''; input.value = ''; input.focus();
       }),
+      print: async (lines) => { (lines||[]).forEach(l => appendLine(l.text || l, l.status === 'ERR' ? 'var(--hud-danger)' : undefined)); },
+      flyTo: () => {}, setFullscreen: () => {},
     };
+    try {
+      const lines = await runCommand(raw, ctx);
+      if (lines?.length) lines.forEach(l => appendLine(l.text || l, l.status === 'ERR' ? 'var(--hud-danger)' : l.status === 'OK' ? 'var(--hud-primary)' : undefined));
+    } catch { appendLine('bash: ' + cmd + ': command not found','var(--hud-danger)'); }
   }
 
-  // 密码遮掩
-  input.addEventListener('input', () => {
-    if (!pendingResolve?.mask) return;
-    maskValue += input.value;   // 累加，不是覆盖
-    input.value = '';
-    const last = output.lastElementChild;
-    if (last) last.textContent = pendingResolve.label + '*'.repeat(maskValue.length);
-    output.scrollTop = output.scrollHeight;
-  });
 
-  input.addEventListener('keydown', async e => {
-    if (e.ctrlKey && e.key === 'c') {
+  // ── Keyboard handler ─────────────────────────────────────
+  input.addEventListener('keydown', async (e) => {
+    if (e.key === 'Tab') {
       e.preventDefault();
-      if (pendingResolve) { pendingResolve.resolve(null); pendingResolve = null; maskValue = ''; input.value = ''; }
-      cmdRunning = false;
-      appendLine('^C', 'var(--hud-danger)');
-      return;
-    }
+      const val = input.value;
+      if (pendingResolve) return;
 
-    if (pendingResolve?.mask && e.key === 'Backspace') {
-      e.preventDefault();
-      maskValue = maskValue.slice(0, -1);
-      input.value = '';
-      const last = output.lastElementChild;
-      if (last) last.textContent = pendingResolve.label + '*'.repeat(maskValue.length);
-      return;
-    }
-
-    if (pendingResolve) {
-      if (e.key === 'Enter') {
-        e.preventDefault();
-        const val = pendingResolve.mask ? maskValue : input.value;
-        const { resolve, mask, label } = pendingResolve;
-        pendingResolve = null; input.value = ''; maskValue = '';
-        const last = output.lastElementChild;
-        if (last) last.textContent = label + (mask ? '*'.repeat(val.length) : val);
-        resolve(val || null);
-      } else if (e.key === 'Escape') {
-        e.preventDefault();
-        pendingResolve.resolve(null); pendingResolve = null; input.value = ''; maskValue = '';
+      if (!tabState || tabState.base !== val) {
+        const result = tabComplete(val);
+        if (!result.matches.length) return;
+        if (result.matches.length === 1) {
+          input.value = result.prefix + result.matches[0];
+          tabState = null; return;
+        }
+        tabState = { base: val, matches: result.matches, prefix: result.prefix, pos: 0 };
+        result.matches.forEach(m => appendLine('  ' + m));
+      } else {
+        tabState.pos = (tabState.pos + 1) % tabState.matches.length;
+        input.value = tabState.prefix + tabState.matches[tabState.pos];
       }
       return;
     }
 
+    tabState = null;
+
     if (e.key === 'ArrowUp') {
       e.preventDefault();
-      if (!cmdHistory.length) return;
-      histIdx = Math.min(histIdx + 1, cmdHistory.length - 1);
-      input.value = cmdHistory[cmdHistory.length - 1 - histIdx];
+      if (pendingResolve) return;
+      if (histIdx < cmdHistory.length - 1) { histIdx++; input.value = cmdHistory[cmdHistory.length - 1 - histIdx]; }
       return;
     }
     if (e.key === 'ArrowDown') {
       e.preventDefault();
-      histIdx = Math.max(histIdx - 1, -1);
-      input.value = histIdx < 0 ? '' : cmdHistory[cmdHistory.length - 1 - histIdx];
+      if (pendingResolve) return;
+      if (histIdx > 0) { histIdx--; input.value = cmdHistory[cmdHistory.length - 1 - histIdx]; }
+      else { histIdx = -1; input.value = ''; }
       return;
     }
 
-    if (e.key !== 'Enter') return;
-    if (cmdRunning) { input.value = ''; return; }
+    if (e.key === 'c' && e.ctrlKey) {
+      e.preventDefault();
+      if (pendingResolve) { pendingResolve.resolve(''); pendingResolve = null; maskValue = ''; }
+      appendLine('^C');
+      input.value = ''; cmdRunning = false; return;
+    }
 
-    const cmd = input.value.trim();
-    input.value = '';
-    histIdx = -1;
-    if (!cmd) return;
-    cmdHistory.push(cmd);
+    if (e.key === 'Enter') {
+      e.preventDefault();
+      const val = maskValue || input.value;
+      input.value = '';
 
-    appendLine(`${promptEl.textContent.trimEnd()} ${cmd}`, 'var(--hud-text-dim)');
-    cmdRunning = true;
-    await handleCmd(cmd);
-    cmdRunning = false;
-    updatePrompt();
-    input.focus();
-  }, true);
+      if (pendingResolve) {
+        const { resolve, mask } = pendingResolve;
+        pendingResolve = null; maskValue = '';
+        if (!mask) appendLine(val);
+        resolve(val); return;
+      }
 
+      const raw = val.trim();
+      if (!raw) return;
+      cmdHistory.push(raw); histIdx = -1;
+      appendLine(promptEl.textContent.trimEnd() + ' ' + raw);
+
+      if (cmdRunning) return;
+      cmdRunning = true;
+      try { await handleCmd(raw); }
+      finally { cmdRunning = false; updatePrompt(); }
+      return;
+    }
+
+    // Mask password input
+    if (pendingResolve?.mask && e.key.length === 1) {
+      maskValue += e.key;
+      const stars = '*'.repeat(maskValue.length);
+      input.value = stars;
+      e.preventDefault();
+      return;
+    }
+    if (pendingResolve?.mask && e.key === 'Backspace') {
+      maskValue = maskValue.slice(0, -1);
+      input.value = '*'.repeat(maskValue.length);
+      e.preventDefault();
+    }
+  });
+
+  // Focus input on container click
+  container.addEventListener('click', () => input.focus());
   input.focus();
+
+  // Welcome message
+  appendLine('Debian GNU/Linux 12 (bookworm) — g2306-node');
+  appendLine('Last login: ' + new Date().toUTCString());
+  appendLine('Type "help" for available commands.');
+  appendLine('');
 }

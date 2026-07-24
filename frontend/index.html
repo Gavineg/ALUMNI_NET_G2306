@@ -256,6 +256,31 @@
         return;
       }
 
+      // History navigation
+      if (e.key === 'ArrowUp') {
+        e.preventDefault();
+        if (histIdx < history.length - 1) { histIdx++; fsInput.value = history[history.length - 1 - histIdx]; }
+        return;
+      }
+      if (e.key === 'ArrowDown') {
+        e.preventDefault();
+        if (histIdx > 0) { histIdx--; fsInput.value = history[history.length - 1 - histIdx]; }
+        else { histIdx = -1; fsInput.value = ''; }
+        return;
+      }
+
+      // Tab completion (command names only for fullscreen DOS terminal)
+      if (e.key === 'Tab') {
+        e.preventDefault();
+        const cur = fsInput.value.trim().toLowerCase();
+        if (tabBase === null) { tabBase = cur; tabMatches = CMD_LIST.filter(c => c.startsWith(tabBase)); tabPos = 0; }
+        if (!tabMatches.length) return;
+        fsInput.value = tabMatches[tabPos % tabMatches.length].toUpperCase();
+        tabPos++;
+        return;
+      }
+      if (e.key !== 'Tab') tabBase = null;
+
       // pendingResolve（全屏下的多步骤输入走 dosInput，这里只处理 Enter 命令）
       if (e.key !== 'Enter') return;
       if (commandRunning) { fsInput.value = ''; return; }
