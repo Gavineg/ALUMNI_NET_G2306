@@ -350,12 +350,14 @@ body.portal-body {
   background: #050709;
   font-family: 'Courier New', Courier, monospace;
   font-size: 13px;
+  min-height: 500px;
+  border: 1px solid var(--hud-border);
 }
 
 #pt-vim-body {
   flex: 1;
   width: 100%;
-  min-height: 0;
+  min-height: 400px;
   resize: none;
   background: #050709 !important;
   color: #b8ff47 !important;

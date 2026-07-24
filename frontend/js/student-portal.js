@@ -90,13 +90,15 @@ export async function initStudentPortal(container) {
         <input class="portal-terminal-input" id="pt-input" type="text"
                autocomplete="off" spellcheck="false" placeholder="enter command...">
       </div>
-      <!-- vim overlay -->
-      <div id="pt-vim" style="display:none;position:fixed;top:0;left:0;right:0;bottom:0;z-index:9999">
-        <textarea id="pt-vim-body" spellcheck="false" autocomplete="off"></textarea>
-        <div id="pt-vim-status"></div>
-        <div id="pt-vim-cmd"></div>
-      </div>
+
     </div>
+    </div>
+
+    <!-- vim editor panel (replaces entire view when open) -->
+    <div id="pt-vim" style="display:none;width:100%;max-width:860px;flex-direction:column">
+      <textarea id="pt-vim-body" spellcheck="false" autocomplete="off"></textarea>
+      <div id="pt-vim-status"></div>
+      <div id="pt-vim-cmd"></div>
     </div>
   `;
 
@@ -638,8 +640,12 @@ function initPortalTerminal(container, session) {
       const cmdEl    = container.querySelector('#pt-vim-cmd');
 
       taEl.value = initContent;
+
+      // Hide the rest of the portal, show only vim
+      const portalMain = container.querySelector('.portal-card') || container.firstElementChild;
+      const allSections = [...container.children].filter(el => el !== vimEl);
+      allSections.forEach(el => { el._vimHidden = el.style.display; el.style.display = 'none'; });
       vimEl.style.display = 'flex';
-      // Force reflow so flex layout applies before focus
       void vimEl.offsetHeight;
       taEl.readOnly = true;
       taEl.focus();
@@ -702,6 +708,7 @@ function initPortalTerminal(container, session) {
               const c = cmdBuf.trim();
               if (c === 'q!' || (c === 'q' && !modified)) {
                 vimEl.style.display = 'none';
+                allSections.forEach(el => { el.style.display = el._vimHidden !== undefined ? el._vimHidden : ''; });
                 taEl.removeEventListener('keydown', onKey);
                 resolve(null); return;
               }
@@ -712,6 +719,7 @@ function initPortalTerminal(container, session) {
               if (c === 'w' || c === 'wq' || c === 'x') {
                 const content = taEl.value;
                 vimEl.style.display = 'none';
+                allSections.forEach(el => { el.style.display = el._vimHidden !== undefined ? el._vimHidden : ''; });
                 taEl.removeEventListener('keydown', onKey);
                 resolve(content); return;
               }
