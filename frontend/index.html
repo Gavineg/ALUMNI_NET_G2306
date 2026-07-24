@@ -406,9 +406,9 @@
       if (e.key !== 'Tab') tabBase = null;
       if (e.key !== 'Enter') return;
 
-      // block input while in fullscreen mode (only exit commands allowed)
-      const rawCmd = dosInput.value.trim().toLowerCase();
-      if (isFullscreen && !['exit','quit','close','clear','cls'].includes(rawCmd)) {
+      // 全屏模式下禁止重新触发会抢占全屏的命令
+      const rawCmd = dosInput.value.trim().toLowerCase().split(/\s+/)[0];
+      if (isFullscreen && ['scan','roster','fullscreen','fs'].includes(rawCmd)) {
         dosInput.value = '';
         return;
       }
