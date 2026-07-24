@@ -65,6 +65,8 @@ export async function biosAppend(terminal, lines) {
     for (const char of item.text) {
       if (signal.aborted) return;
       div.textContent += char;
+      await new Promise(r => requestAnimationFrame(r));
+      terminal.scrollTop = terminal.scrollHeight;
       await sleep(16 + Math.random() * 22);
     }
 
