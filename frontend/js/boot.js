@@ -36,7 +36,7 @@ export async function glitchResolve(el, target, glitchMs = 240, resolveMs = 28) 
 /**
  * 普通打字机（用于子标题等辅助文字）
  */
-export async function typeWrite(el, text, speed = 42) {
+export async function typeWrite(el, text, speed = 50) {
   el.textContent = '';
   for (const char of text) {
     el.textContent += char;
@@ -67,7 +67,7 @@ function attachScrollTracker(terminal) {
   });
 }
 
-export async function biosAppend(terminal, lines, speed = 10) {
+export async function biosAppend(terminal, lines, speed = 35) {
   if (typingCtrl) typingCtrl.abort();
   typingCtrl = new AbortController();
   const { signal } = typingCtrl;

@@ -88,8 +88,8 @@
 
     async function boot() {
       // 乱码启动
-      await glitchResolve(headerEl, 'BOOTING ALUMNI_NET...', 220, 24);
-      await typeWrite(subEl, 'INITIALIZING MAP MODULE...', 18);
+      await glitchResolve(headerEl, 'BOOTING ALUMNI_NET...', 180, 16);
+      await typeWrite(subEl, 'INITIALIZING MAP MODULE...', 16);
 
       // 地图显示
       document.getElementById('map-container').style.opacity = '1';
@@ -97,7 +97,7 @@
 
       // 拉取数据，失败则自动重连
       subEl.textContent = '';
-      await typeWrite(subEl, 'FETCHING TARGET DATA...', 18);
+      await typeWrite(subEl, 'FETCHING TARGET DATA...', 16);
 
       let mapData = null;
       let retryCount = 0;
@@ -106,16 +106,16 @@
         if (!mapData) {
           retryCount++;
           subEl.textContent = '';
-          await typeWrite(subEl, `[ERR] API FAULT — RETRY ${retryCount} IN 2S...`, 18);
+          await typeWrite(subEl, `[ERR] API FAULT — RETRY ${retryCount} IN 2S...`, 16);
           await sleep(2000);
           subEl.textContent = '';
-          await typeWrite(subEl, 'RECONNECTING...', 18);
+          await typeWrite(subEl, 'RECONNECTING...', 16);
         }
       }
 
-      await glitchResolve(headerEl, '[G2306] CHUANG XIN BASE', 220, 24);
+      await glitchResolve(headerEl, '[G2306] CHUANG XIN BASE', 180, 16);
       subEl.textContent = '';
-      await typeWrite(subEl, 'LAUNCHING TRACER SWARM...', 18);
+      await typeWrite(subEl, 'LAUNCHING TRACER SWARM...', 16);
 
       launchParticles(chart, mapData.originCoords, mapData.linesData, FLIGHT_TIME);
 
@@ -125,7 +125,7 @@
       chart.setOption({ geo: { roam: true } });
 
       subEl.textContent = '';
-      await typeWrite(subEl, 'SIGNAL LOCKING TARGETS...', 18);
+      await typeWrite(subEl, 'SIGNAL LOCKING TARGETS...', 16);
 
       lastMapData = mapData;
       await revealTargets(chart, mapData.scatterData, mapData.linesData, mapData.colorMode);
