@@ -1,6 +1,6 @@
 import { apiFetch, getSession } from './auth.js';
 import { API_BASE } from './config.js';
-import { runCommand, getPromptPrefix } from './terminal-cmd.js';
+import { runCommand } from './terminal-cmd.js';
 import { biosAppend } from './boot.js';
 
 let profile = {};
@@ -254,15 +254,34 @@ function initPortalTerminal(container, session) {
   const promptEl = container.querySelector('#pt-prompt');
   const labelEl  = container.querySelector('#pt-prompt-label');
 
-  const token = localStorage.getItem('g2306_token');
+  // 关闭强制大写
+  input.style.textTransform = 'none';
+
   let pendingResolve = null;
   let maskValue = '';
   let cmdRunning = false;
-  const history = [];
+  const cmdHistory = [];
   let histIdx = -1;
 
+  // 当前目录（虚拟，仅显示用）
+  let cwd = '/home/' + (session?.name || 'user').toLowerCase().replace(/\s+/g, '');
+
+  // 服务器虚拟文件系统（固定结构）
+  const SERVER_FS = {
+    '/': ['bin', 'boot', 'dev', 'etc', 'home', 'lib', 'proc', 'root', 'srv', 'tmp', 'usr', 'var'],
+    '/etc': ['apt', 'cron.d', 'g2306', 'hosts', 'nginx', 'passwd', 'shadow', 'ssh', 'systemd'],
+    '/etc/g2306': ['.env'],         // 藏在这里
+    '/home': [cwd.split('/').pop()],
+    '/var': ['log', 'run', 'spool', 'tmp', 'www'],
+    '/var/log': ['auth.log', 'syslog', 'nginx'],
+    '/usr': ['bin', 'local', 'share'],
+    '/srv': ['http', 'ftp'],
+  };
+
   function getPrefix() {
-    return getPromptPrefix(localStorage.getItem('g2306_token'));
+    const tok = localStorage.getItem('g2306_token');
+    const name = session?.name ? session.name.toUpperCase().replace(/\s+/g,'_') : 'USER';
+    return `C:\\G2306\\${name}`;
   }
 
   function updatePrompt() {
@@ -280,31 +299,145 @@ function initPortalTerminal(container, session) {
     output.scrollTop = output.scrollHeight;
   }
 
-  // ctx — 简化版，后台终端没有地图/全屏
-  function makeCtx() {
-    return {
-      openPanel:    () => {},
-      closePanel:   () => {},
-      clearTerminal: () => { output.innerHTML = ''; },
-      getMapData:   () => null,
-      flyTo:        () => {},
-      setFullscreen: () => {},
-      getToken:     () => localStorage.getItem('g2306_token'),
-      setToken:     (t) => { if (t) localStorage.setItem('g2306_token', t); else localStorage.removeItem('g2306_token'); },
+  // 后台专用命令处理（拦截 ls/cd/pwd，其余走 runCommand）
+  async function handleCmd(raw) {
+    const parts = raw.trim().split(/\s+/);
+    const cmd = parts[0].toLowerCase();
+    const arg = parts.slice(1).join(' ');
 
-      promptLine: (label) => new Promise(resolve => {
-        appendLine(label);
-        pendingResolve = { resolve, mask: false, label };
+    if (cmd === 'pwd') {
+      appendLine(cwd);
+      return;
+    }
+
+    if (cmd === 'cd') {
+      const target = arg.trim() || '/home/' + (session?.name||'user').toLowerCase().replace(/\s+/g,'');
+      let next = target.startsWith('/') ? target : (cwd + '/' + target).replace(/\/+/g, '/');
+      // 简单 .. 处理
+      const parts2 = next.split('/').filter(Boolean);
+      const resolved = [];
+      for (const p of parts2) { if (p === '..') resolved.pop(); else resolved.push(p); }
+      next = '/' + resolved.join('/');
+      cwd = next;
+      return;
+    }
+
+    if (cmd === 'ls' || cmd === 'dir') {
+      const entries = SERVER_FS[cwd];
+      if (!entries) { appendLine(`ls: cannot access '${cwd}': No such file or directory`, 'var(--hud-danger)'); return; }
+      entries.forEach(e => appendLine(e));
+      return;
+    }
+
+    if (cmd === 'cat') {
+      const filePath = arg.startsWith('/') ? arg : (cwd + '/' + arg).replace(/\/+/g,'/');
+      if (filePath === '/etc/g2306/.env') {
+        // 走 vim 路径一样的逻辑，但 cat 只读
+        const tok = localStorage.getItem('g2306_token');
+        let d = {};
+        if (tok) {
+          try { const r = await fetch(`${API_BASE}/api/student/me`, { headers:{Authorization:`Bearer ${tok}`} }); if(r.ok) d = await r.json(); } catch {}
+        }
+        appendLine('# G2306 NODE SERVER CONFIGURATION');
+        appendLine(`SERVER_HOSTNAME=${d.server_hostname||''}`);
+        appendLine(`SERVER_PORTS=${d.server_ports||'22,80'}`);
+        appendLine(`SERVER_DIFFICULTY=${d.server_difficulty||2}`);
+        appendLine(`SERVER_THEME=${d.server_theme||'DEFAULT'}`);
+        appendLine(`HACK_LOOT=${d.hack_loot ? '"'+d.hack_loot.slice(0,60)+'"' : ''}`);
+        return;
+      }
+      appendLine(`cat: ${arg}: Permission denied`, 'var(--hud-danger)');
+      return;
+    }
+
+    if (cmd === 'clear' || cmd === 'cls') { output.innerHTML = ''; return; }
+
+    if (cmd === 'vim' || cmd === 'vi' || cmd === 'nano') {
+      // vim /etc/g2306/.env — 编辑服务器配置
+      const filePath = arg.startsWith('/') ? arg : (cwd + '/' + arg).replace(/\/+/g,'/');
+      if (filePath !== '/etc/g2306/.env') {
+        appendLine(`${cmd}: ${arg}: permission denied`, 'var(--hud-danger)');
+        return;
+      }
+      const tok = localStorage.getItem('g2306_token');
+      if (!tok) { appendLine('permission denied: not authenticated', 'var(--hud-danger)'); return; }
+      let d = {};
+      try { const r = await fetch(`${API_BASE}/api/student/me`, { headers:{Authorization:`Bearer ${tok}`} }); if(r.ok) d = await r.json(); } catch {}
+
+      appendLine(`"/etc/g2306/.env"  -- INSERT --`);
+      appendLine('# G2306 NODE SERVER CONFIGURATION');
+      appendLine('# Edit values, then type :w KEY=VALUE ... to save');
+      appendLine(`SERVER_HOSTNAME=${d.server_hostname||''}`);
+      appendLine(`SERVER_PORTS=${d.server_ports||'22,80'}`);
+      appendLine(`SERVER_DIFFICULTY=${d.server_difficulty||2}`);
+      appendLine(`SERVER_THEME=${d.server_theme||'DEFAULT'}`);
+      appendLine(`HACK_LOOT=${d.hack_loot ? '"'+d.hack_loot.slice(0,60)+'"' : ''}`);
+      appendLine('');
+
+      // 等待 :w 输入
+      const userInput = await new Promise(resolve => {
+        appendLine(':');
+        pendingResolve = { resolve, mask: false, label: ':' };
         maskValue = '';
         input.value = '';
         input.focus();
+      });
+
+      if (!userInput) { appendLine('"[No Write Since Last Change]"'); return; }
+      const vcmd = userInput.trim().toLowerCase();
+      if (vcmd === 'q' || vcmd === 'q!') { appendLine('"[File not saved]"'); return; }
+      if (!vcmd.startsWith('w')) { appendLine(`E492: Not an editor command: ${userInput}`, 'var(--hud-danger)'); return; }
+
+      const raw2 = userInput.replace(/^wq?/i,'').trim();
+      const payload = {};
+      const fieldMap = { SERVER_HOSTNAME:'server_hostname', SERVER_PORTS:'server_ports', SERVER_DIFFICULTY:'server_difficulty', SERVER_THEME:'server_theme', HACK_LOOT:'hack_loot' };
+      for (const part of raw2.split(/\s+/)) {
+        const [k,...vs] = part.split('=');
+        const v = vs.join('=').replace(/^"|"$/g,'');
+        if (k && vs.length && fieldMap[k.toUpperCase()]) {
+          const fk = k.toUpperCase();
+          payload[fieldMap[fk]] = fk==='SERVER_DIFFICULTY' ? Math.min(5,Math.max(1,parseInt(v)||2)) : v;
+        }
+      }
+      if (!Object.keys(payload).length) { appendLine('"[No changes to write]"'); return; }
+      try {
+        const res = await fetch(`${API_BASE}/api/student/me`, {
+          method:'PUT', headers:{'Content-Type':'application/json',Authorization:`Bearer ${tok}`},
+          body: JSON.stringify(payload)
+        });
+        if (!res.ok) { appendLine('write failed: permission denied', 'var(--hud-danger)'); return; }
+        appendLine(`"/etc/g2306/.env" written — updated: ${Object.keys(payload).join(', ')}`, 'var(--hud-primary)');
+      } catch { appendLine('write failed: connection error', 'var(--hud-danger)'); }
+      return;
+    }
+
+    // 其余命令（help, whoami, me, set, passwd, stats 等）走公用 runCommand
+    const ctx = makeCtx();
+    try {
+      const lines = await runCommand(raw, ctx);
+      if (lines?.length) await biosAppend(output, lines);
+    } catch (err) {
+      appendLine(`[ERR] ${err.message}`, 'var(--hud-danger)');
+    }
+  }
+
+  // ctx for runCommand — portal mode, no map/fullscreen
+  function makeCtx() {
+    return {
+      openPanel: () => {}, closePanel: () => {},
+      clearTerminal: () => { output.innerHTML = ''; },
+      getMapData: () => null, flyTo: () => {}, setFullscreen: () => {},
+      getToken: () => localStorage.getItem('g2306_token'),
+      setToken: (t) => { if (t) localStorage.setItem('g2306_token', t); else localStorage.removeItem('g2306_token'); },
+      promptLine: (label) => new Promise(resolve => {
+        appendLine(label);
+        pendingResolve = { resolve, mask: false, label };
+        maskValue = ''; input.value = ''; input.focus();
       }),
       promptPassword: (label) => new Promise(resolve => {
         appendLine(label);
         pendingResolve = { resolve, mask: true, label };
-        maskValue = '';
-        input.value = '';
-        input.focus();
+        maskValue = ''; input.value = ''; input.focus();
       }),
     };
   }
@@ -314,14 +447,12 @@ function initPortalTerminal(container, session) {
     if (!pendingResolve?.mask) return;
     maskValue = input.value;
     input.value = '';
-    // 更新末尾行显示
     const last = output.lastElementChild;
     if (last) last.textContent = pendingResolve.label + '*'.repeat(maskValue.length);
     output.scrollTop = output.scrollHeight;
   });
 
   input.addEventListener('keydown', async e => {
-    // Ctrl+C
     if (e.ctrlKey && e.key === 'c') {
       e.preventDefault();
       if (pendingResolve) { pendingResolve.resolve(null); pendingResolve = null; maskValue = ''; input.value = ''; }
@@ -330,7 +461,6 @@ function initPortalTerminal(container, session) {
       return;
     }
 
-    // Backspace in password mode
     if (pendingResolve?.mask && e.key === 'Backspace') {
       e.preventDefault();
       maskValue = maskValue.slice(0, -1);
@@ -340,14 +470,12 @@ function initPortalTerminal(container, session) {
       return;
     }
 
-    // Pending prompt Enter/Escape
     if (pendingResolve) {
       if (e.key === 'Enter') {
         e.preventDefault();
         const val = pendingResolve.mask ? maskValue : input.value;
         const { resolve, mask, label } = pendingResolve;
-        pendingResolve = null;
-        input.value = ''; maskValue = '';
+        pendingResolve = null; input.value = ''; maskValue = '';
         const last = output.lastElementChild;
         if (last) last.textContent = label + (mask ? '*'.repeat(val.length) : val);
         resolve(val || null);
@@ -358,18 +486,17 @@ function initPortalTerminal(container, session) {
       return;
     }
 
-    // History
     if (e.key === 'ArrowUp') {
       e.preventDefault();
-      if (!history.length) return;
-      histIdx = Math.min(histIdx + 1, history.length - 1);
-      input.value = history[history.length - 1 - histIdx];
+      if (!cmdHistory.length) return;
+      histIdx = Math.min(histIdx + 1, cmdHistory.length - 1);
+      input.value = cmdHistory[cmdHistory.length - 1 - histIdx];
       return;
     }
     if (e.key === 'ArrowDown') {
       e.preventDefault();
       histIdx = Math.max(histIdx - 1, -1);
-      input.value = histIdx < 0 ? '' : history[history.length - 1 - histIdx];
+      input.value = histIdx < 0 ? '' : cmdHistory[cmdHistory.length - 1 - histIdx];
       return;
     }
 
@@ -380,21 +507,11 @@ function initPortalTerminal(container, session) {
     input.value = '';
     histIdx = -1;
     if (!cmd) return;
-    history.push(cmd);
+    cmdHistory.push(cmd);
 
     appendLine(`${getPrefix()}> ${cmd}`, 'var(--hud-text-dim)');
     cmdRunning = true;
-
-    const ctx = makeCtx();
-    try {
-      const lines = await runCommand(cmd, ctx);
-      if (lines?.length) {
-        await biosAppend(output, lines);
-      }
-    } catch (err) {
-      appendLine(`[ERR] ${err.message}`, 'var(--hud-danger)');
-    }
-
+    await handleCmd(cmd);
     cmdRunning = false;
     updatePrompt();
     input.focus();

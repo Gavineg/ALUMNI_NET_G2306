@@ -203,17 +203,18 @@
       isFullscreen  = on;
       if (on) {
         panel.classList.add('active', 'fullscreen');
+        document.body.classList.add('is-fullscreen');
         mapEl.style.opacity       = '0';
         mapEl.style.pointerEvents = 'none';
         document.getElementById('close-btn').textContent = '[EXIT]';
       } else {
         panel.classList.remove('fullscreen');
+        document.body.classList.remove('is-fullscreen');
         mapEl.style.opacity       = '1';
         mapEl.style.pointerEvents = '';
         document.getElementById('close-btn').textContent = '[ABORT]';
         closePanel();
       }
-      // keep focus on DOS input
       setTimeout(() => dosInput.focus(), 50);
     }
 

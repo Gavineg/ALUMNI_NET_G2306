@@ -180,12 +180,17 @@
   transform: none !important;
   clip-path: none !important;
   z-index: 100;
-  padding: 30px 40px;
+  padding: 90px 40px 30px;
 }
 #info-panel.fullscreen .panel-header,
 #info-panel.fullscreen .close-btn { display: none; }
 #info-panel.fullscreen #terminal-content {
-  max-height: calc(100vh - 80px);
+  max-height: calc(100vh - 120px);
+}
+
+/* 全屏时 header 浮在面板上方 */
+body.is-fullscreen #hud-header {
+  z-index: 101;
 }
 
 /* ── PC 端面板位置 ────────────────────────────────────── */
