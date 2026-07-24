@@ -293,15 +293,20 @@ function initPortalTerminal(container, session) {
     '/srv': ['http', 'ftp'],
   };
 
-  function getPrefix() {
-    const u = (session?.username || session?.name || 'USER').toUpperCase().replace(/\s+/g,'_');
-    return `C:\\G2306\\${u}`;
+  function cwdDisplay() {
+    // 把 Linux 路径映射成终端显示路径，主目录缩写为 ~
+    const home = `/home/${userSlug}`;
+    if (cwd === home) return '~';
+    if (cwd.startsWith(home + '/')) return '~' + cwd.slice(home.length);
+    return cwd;
   }
 
   function updatePrompt() {
-    const p = getPrefix();
-    promptEl.textContent = p + '> ';
-    if (labelEl) labelEl.textContent = p;
+    const u = (session?.username || session?.name || 'USER').toUpperCase().replace(/\s+/g,'_');
+    const path = cwdDisplay();
+    const text = `${u}@G2306:${path}$`;
+    promptEl.textContent = text + ' ';
+    if (labelEl) labelEl.textContent = text;
   }
   updatePrompt();
 
@@ -325,14 +330,18 @@ function initPortalTerminal(container, session) {
     }
 
     if (cmd === 'cd') {
-      const target = arg.trim() || '/home/' + (session?.name||'user').toLowerCase().replace(/\s+/g,'');
+      const target = arg.trim() || `/home/${userSlug}`;
       let next = target.startsWith('/') ? target : (cwd + '/' + target).replace(/\/+/g, '/');
-      // 简单 .. 处理
       const parts2 = next.split('/').filter(Boolean);
       const resolved = [];
       for (const p of parts2) { if (p === '..') resolved.pop(); else resolved.push(p); }
       next = '/' + resolved.join('/');
-      cwd = next;
+      if (next !== '/' && !SERVER_FS[next]) {
+        appendLine(`bash: cd: ${target}: No such file or directory`, 'var(--hud-danger)');
+        return;
+      }
+      cwd = next || '/';
+      updatePrompt();
       return;
     }
 
@@ -345,8 +354,62 @@ function initPortalTerminal(container, session) {
 
     if (cmd === 'cat') {
       const filePath = arg.startsWith('/') ? arg : (cwd + '/' + arg).replace(/\/+/g,'/');
+
+      // 静态文件内容
+      const now = new Date();
+      const ts = () => now.toISOString().replace('T',' ').slice(0,19);
+      const staticFiles = {
+        [`/home/${userSlug}/.bashrc`]: [
+          `# ~/.bashrc: executed by bash(1) for non-login shells.`,
+          `export PS1='\\u@G2306:\\w$ '`,
+          `export PATH="$HOME/.local/bin:$PATH"`,
+          `alias ll='ls -alF'`,
+          `alias la='ls -A'`,
+          `alias grep='grep --color=auto'`,
+        ],
+        [`/home/${userSlug}/.ssh/authorized_keys`]: [
+          `# Authorized SSH keys for ${userSlug}@g2306`,
+          `# ssh-rsa AAAA... (no keys configured)`,
+        ],
+        [`/home/${userSlug}/.ssh/known_hosts`]: [
+          `|1|hash/== ecdsa-sha2-nistp256 AAAA...`,
+          `github.com ssh-rsa AAAA...`,
+        ],
+        [`/home/${userSlug}/logs/access.log`]: [
+          `${ts()} [INFO] SSH login from 192.168.1.1 as ${userSlug}`,
+          `${ts()} [INFO] Session opened for user ${userSlug}`,
+          `${ts()} [INFO] Command executed: ls /home`,
+          `${ts()} [WARN] Failed auth attempt from 185.220.101.32`,
+          `${ts()} [INFO] Session closed`,
+        ],
+        [`/home/${userSlug}/logs/error.log`]: [
+          `${ts()} [ERROR] Connection refused: port 8080 not bound`,
+          `${ts()} [WARN]  Disk usage at 74% on /dev/sda1`,
+          `${ts()} [INFO]  Service g2306-node restarted`,
+        ],
+        '/etc/hosts': [
+          `127.0.0.1   localhost`,
+          `127.0.1.1   g2306-node`,
+          `::1         localhost ip6-localhost ip6-loopback`,
+        ],
+        '/etc/passwd': [
+          `root:x:0:0:root:/root:/bin/bash`,
+          `daemon:x:1:1:daemon:/usr/sbin:/usr/sbin/nologin`,
+          `${userSlug}:x:1000:1000:,,,:/home/${userSlug}:/bin/bash`,
+        ],
+        '/var/log/auth.log': [
+          `${ts()} g2306-node sshd[1337]: Accepted publickey for ${userSlug}`,
+          `${ts()} g2306-node sshd[1337]: pam_unix(sshd:session): session opened`,
+          `${ts()} g2306-node sudo: ${userSlug} : TTY=pts/0 ; PWD=/home/${userSlug}`,
+        ],
+        '/var/log/syslog': [
+          `${ts()} g2306-node kernel: [0.000000] Initializing cgroup subsys`,
+          `${ts()} g2306-node systemd[1]: Started G2306 Node Service.`,
+          `${ts()} g2306-node cron[892]: (CRON) INFO (pidfile fd = 3)`,
+        ],
+      };
+
       if (filePath === '/etc/g2306/.env') {
-        // 走 vim 路径一样的逻辑，但 cat 只读
         const tok = localStorage.getItem('g2306_token');
         let d = {};
         if (tok) {
@@ -360,7 +423,24 @@ function initPortalTerminal(container, session) {
         appendLine(`HACK_LOOT=${d.hack_loot ? '"'+d.hack_loot.slice(0,60)+'"' : ''}`);
         return;
       }
-      appendLine(`cat: ${arg}: Permission denied`, 'var(--hud-danger)');
+
+      if (filePath === '/etc/shadow') {
+        appendLine(`cat: /etc/shadow: Permission denied`, 'var(--hud-danger)');
+        return;
+      }
+
+      if (staticFiles[filePath]) {
+        staticFiles[filePath].forEach(l => appendLine(l));
+        return;
+      }
+
+      // 判断路径是否是已知目录
+      if (SERVER_FS[filePath]) {
+        appendLine(`cat: ${arg}: Is a directory`, 'var(--hud-danger)');
+        return;
+      }
+
+      appendLine(`cat: ${arg}: No such file or directory`, 'var(--hud-danger)');
       return;
     }
 
@@ -523,7 +603,7 @@ function initPortalTerminal(container, session) {
     if (!cmd) return;
     cmdHistory.push(cmd);
 
-    appendLine(`${getPrefix()}> ${cmd}`, 'var(--hud-text-dim)');
+    appendLine(`${promptEl.textContent.trimEnd()} ${cmd}`, 'var(--hud-text-dim)');
     cmdRunning = true;
     await handleCmd(cmd);
     cmdRunning = false;
