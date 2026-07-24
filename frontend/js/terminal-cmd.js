@@ -67,6 +67,26 @@ function genChallenge() {
   }
 }
 
+// ── Virtual filesystem (sessionStorage) ──────────────────────
+
+function getFS() {
+  try { return JSON.parse(sessionStorage.getItem('g2306_fs') || '{"dirs":[],"files":{}}'); } catch { return { dirs: [], files: {} }; }
+}
+function saveFS(fs) { sessionStorage.setItem('g2306_fs', JSON.stringify(fs)); }
+
+function normPath(p) { return p.replace(/\\/g, '/').replace(/\/+/g, '/').replace(/\/$/, '') || '/'; }
+
+// ── Current prompt prefix ─────────────────────────────────────
+
+export function getPromptPrefix(token) {
+  if (!token) return 'C:\\G2306';
+  try {
+    const p = JSON.parse(atob(token.split('.')[1]));
+    const u = (p.name || 'GUEST').toUpperCase().replace(/\s+/g, '_');
+    return `C:\\G2306\\${u}`;
+  } catch { return 'C:\\G2306'; }
+}
+
 // ── Utilities ─────────────────────────────────────────────────
 
 const FORTUNES = [
@@ -127,7 +147,11 @@ export async function runCommand(raw, ctx) {
 
   if (cmd === 'date' || cmd === 'time') return [L(new Date().toString().toUpperCase())];
   if (cmd === 'clear' || cmd === 'cls') { ctx.clearTerminal(); return []; }
-  if (cmd === 'exit'  || cmd === 'quit' || cmd === 'close') { ctx.closePanel(); return []; }
+  if (cmd === 'exit'  || cmd === 'quit' || cmd === 'close') {
+    ctx.setFullscreen(false);
+    ctx.closePanel();
+    return [];
+  }
 
   // ── AUTH: LOGIN ────────────────────────────────────────────
   if (cmd === 'login') {
@@ -498,14 +522,167 @@ export async function runCommand(raw, ctx) {
     return [L('> DEFAULT THEME RESTORED.', 'OK')];
   }
 
-  // ── LOCAL FILES ────────────────────────────────────────────
-  if (cmd === 'ls' || cmd === 'dir') {
-    return [L('  SECRETS.TXT'), L('  ORIGIN.LOG'), L('  README.MD'), L('  DO_NOT_OPEN.EXE'), L('4 FILE(S)')];
+  // ── SERVERCONF ─────────────────────────────────────────────
+  if (cmd === 'serverconf') {
+    const tok = ctx.getToken();
+    if (!tok) return [L('NOT AUTHENTICATED. USE LOGIN.', 'ERR')];
+    try {
+      const res = await fetch(`${API_BASE}/api/student/me`, { headers: { Authorization: `Bearer ${tok}` } });
+      if (!res.ok) return [L('FETCH FAILED', 'ERR')];
+      const d = await res.json();
+      return [
+        L('> SERVER CONFIGURATION:', 'RDY'),
+        L(`  HOSTNAME   : ${d.server_hostname || '(auto-generated)'}`),
+        L(`  PORTS      : ${d.server_ports    || '(default)'}`),
+        L(`  DIFFICULTY : ${stars(d.server_difficulty || 2)}`),
+        L(`  THEME      : ${d.server_theme    || 'DEFAULT'}`),
+        L(`  HACK_LOOT  : ${d.hack_loot ? `${d.hack_loot.length} CHARS SET` : '(empty)'}`),
+        L(''),
+        L('> USE: SERVERSET <FIELD> <VALUE>'),
+        L('  FIELDS: HOSTNAME / PORTS / DIFFICULTY / THEME'),
+        L('> USE: LOOT — to edit your loot file')
+      ];
+    } catch { return [L('REQUEST FAILED', 'ERR')]; }
   }
 
+  // ── SERVERSET ──────────────────────────────────────────────
+  if (cmd === 'serverset') {
+    const tok = ctx.getToken();
+    if (!tok) return [L('NOT AUTHENTICATED.', 'ERR')];
+    const field = arg1.toLowerCase();
+    const value = arg2;
+    if (!field || !value) return [L('USAGE: SERVERSET <FIELD> <VALUE>', 'ERR'), L('FIELDS: HOSTNAME / PORTS / DIFFICULTY / THEME')];
+    const themeNames = Object.keys(THEMES).join(' / ');
+    const fieldMap = {
+      hostname:   'server_hostname',
+      ports:      'server_ports',
+      difficulty: 'server_difficulty',
+      theme:      'server_theme'
+    };
+    const apiField = fieldMap[field];
+    if (!apiField) return [L(`UNKNOWN FIELD: ${field.toUpperCase()}`, 'ERR'), L(`FIELDS: ${Object.keys(fieldMap).join(' / ').toUpperCase()}`)];
+    if (field === 'theme' && !THEMES[value.toUpperCase()]) {
+      return [L(`UNKNOWN THEME: ${value.toUpperCase()}`, 'ERR'), L(`AVAILABLE: ${themeNames}`)];
+    }
+    const apiValue = field === 'difficulty' ? Math.min(5, Math.max(1, parseInt(value) || 2))
+                   : field === 'theme'      ? value.toUpperCase()
+                   : value;
+    try {
+      const res = await fetch(`${API_BASE}/api/student/me`, {
+        method: 'PUT',
+        headers: { 'Content-Type': 'application/json', Authorization: `Bearer ${tok}` },
+        body: JSON.stringify({ [apiField]: apiValue })
+      });
+      if (!res.ok) return [L('UPDATE FAILED', 'ERR')];
+      return [L(`${field.toUpperCase()} SET TO: ${apiValue}`, 'OK')];
+    } catch { return [L('REQUEST FAILED', 'ERR')]; }
+  }
+
+  // ── LOOT (edit hack_loot interactively) ────────────────────
+  if (cmd === 'loot') {
+    const tok = ctx.getToken();
+    if (!tok) return [L('NOT AUTHENTICATED.', 'ERR')];
+    const lines = [
+      L('> EDITING LOOT.TXT (MAX 500 CHARS)', 'RDY'),
+      L('> TYPE YOUR MESSAGE. PRESS ENTER WHEN DONE.'),
+      L('> (SINGLE LINE ONLY — USE \\n FOR NEWLINES)')
+    ];
+    // Show current value first
+    try {
+      const res = await fetch(`${API_BASE}/api/student/me`, { headers: { Authorization: `Bearer ${tok}` } });
+      const d = await res.json();
+      if (d.hack_loot) lines.push(L(`> CURRENT: "${d.hack_loot.slice(0, 60)}${d.hack_loot.length > 60 ? '...' : ''}"`));
+    } catch {}
+    await ctx.promptLine !== undefined && 0; // just to get lines printed first
+    const newLoot = await ctx.promptLine('> NEW CONTENT: ');
+    if (!newLoot) return [...lines, L('ABORTED', 'ERR')];
+    const content = newLoot.replace(/\\n/g, '\n').slice(0, 500);
+    try {
+      const res = await fetch(`${API_BASE}/api/student/me`, {
+        method: 'PUT',
+        headers: { 'Content-Type': 'application/json', Authorization: `Bearer ${tok}` },
+        body: JSON.stringify({ hack_loot: content })
+      });
+      if (!res.ok) return [...lines, L('SAVE FAILED', 'ERR')];
+      return [...lines, L(`> LOOT.TXT SAVED (${content.length} CHARS).`, 'OK')];
+    } catch { return [...lines, L('REQUEST FAILED', 'ERR')]; }
+  }
+
+  // ── VIRTUAL FILESYSTEM ─────────────────────────────────────
+  if (cmd === 'mkdir') {
+    if (!arg1) return [L('USAGE: MKDIR <DIRNAME>', 'ERR')];
+    const fs = getFS();
+    const p = normPath(arg1);
+    if (fs.dirs.includes(p)) return [L(`DIRECTORY ALREADY EXISTS: ${p}`, 'ERR')];
+    fs.dirs.push(p);
+    saveFS(fs);
+    return [L(`DIRECTORY CREATED: ${p}`, 'OK')];
+  }
+
+  if (cmd === 'touch') {
+    if (!arg1) return [L('USAGE: TOUCH <FILENAME>', 'ERR')];
+    const fs = getFS();
+    const p = normPath(arg1);
+    if (!fs.files[p]) fs.files[p] = '';
+    saveFS(fs);
+    return [L(`FILE: ${p}`, 'OK')];
+  }
+
+  if (cmd === 'echo' && arg.includes('>')) {
+    const parts = arg.split('>');
+    const content = parts[0].trim().replace(/^["']|["']$/g, '');
+    const fname = parts[1].trim();
+    if (!fname) return [L('USAGE: ECHO <TEXT> > <FILE>', 'ERR')];
+    const fs = getFS();
+    fs.files[normPath(fname)] = content;
+    saveFS(fs);
+    return [L(`WRITTEN TO ${fname}`, 'OK')];
+  }
+
+  if ((cmd === 'ls' || cmd === 'dir') && !getConnectedTarget()) {
+    const fs = getFS();
+    const tok = ctx.getToken();
+    let username = 'G2306';
+    if (tok) { try { username = JSON.parse(atob(tok.split('.')[1])).name || 'G2306'; } catch {} }
+    const lines = [
+      L(`  SECRETS.TXT`), L(`  ORIGIN.LOG`), L(`  README.MD`), L(`  DO_NOT_OPEN.EXE`)
+    ];
+    fs.dirs.forEach(d => lines.push(L(`  [DIR] ${d}`)));
+    Object.keys(fs.files).forEach(f => lines.push(L(`  ${f}`)));
+    lines.push(L(`${4 + fs.dirs.length + Object.keys(fs.files).length} ITEM(S)`));
+    return lines;
+  }
+
+  if (cmd === 'rm' || cmd === 'del') {
+    if (!arg1) return [arg.replace(/\s+/g,'').includes('-rf/') ? L('NICE TRY.', 'ERR') : L('USAGE: RM <FILE>', 'ERR')];
+    if (arg.replace(/\s+/g,'').includes('-rf/')) return [L('NICE TRY.'), L('FILESYSTEM PROTECTED BY FRIENDSHIP.', 'OK')];
+    const fs = getFS();
+    const p = normPath(arg1);
+    if (fs.files[p] !== undefined) {
+      delete fs.files[p];
+      saveFS(fs);
+      return [L(`DELETED: ${p}`, 'OK')];
+    }
+    const di = fs.dirs.indexOf(p);
+    if (di >= 0) {
+      fs.dirs.splice(di, 1);
+      saveFS(fs);
+      return [L(`REMOVED DIR: ${p}`, 'OK')];
+    }
+    return [L(`FILE NOT FOUND: ${p}`, 'ERR')];
+  }
+
+  // ── LOCAL FILES (cat with virtual FS support) ──────────────
   if (cmd === 'cat') {
     const file = arg.toUpperCase();
     const downloads = getDownloads();
+
+    // Check virtual filesystem first
+    const fs = getFS();
+    const vPath = normPath(arg);
+    if (fs.files[vPath] !== undefined) {
+      return fs.files[vPath] ? [L(fs.files[vPath])] : [L('(EMPTY FILE)')];
+    }
     if (file === 'LOOT.TXT' && downloads['LOOT.TXT']) {
       return [L('> READING LOOT.TXT...'), L(downloads['LOOT.TXT'].content || '(EMPTY)')];
     }

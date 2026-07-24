@@ -39,7 +39,7 @@
     import { fetchMapData } from './js/map-data.js';
     import { launchParticles, revealTargets, startNoiseLayer } from './js/map-particles.js';
     import { initMapUI, closePanel, openPanel, clearTerminal, flyToCoord } from './js/map-ui.js';
-    import { runCommand, restoreTheme } from './js/terminal-cmd.js';
+    import { runCommand, restoreTheme, getPromptPrefix } from './js/terminal-cmd.js';
     import { biosAppend } from './js/boot.js';
 
     // 恢复上次会话的主题（在任何 DOM 操作前）
@@ -181,6 +181,8 @@
     window.resetMap = function() {
       chart.setOption({ geo: { zoom: initZoom, center: initCenter } });
       closePanel();
+      // keep focus on DOS input, don't steal it
+      requestAnimationFrame(() => dosInput.focus());
     };
 
     document.getElementById('close-btn').addEventListener('click', () => {
@@ -198,18 +200,21 @@
     function setFullscreen(on) {
       const panel   = document.getElementById('info-panel');
       const mapEl   = document.getElementById('map-container');
+      isFullscreen  = on;
       if (on) {
-        panel.classList.add('fullscreen');
-        mapEl.style.opacity        = '0';
-        mapEl.style.pointerEvents  = 'none';
+        panel.classList.add('active', 'fullscreen');
+        mapEl.style.opacity       = '0';
+        mapEl.style.pointerEvents = 'none';
         document.getElementById('close-btn').textContent = '[EXIT]';
       } else {
         panel.classList.remove('fullscreen');
-        mapEl.style.opacity        = '1';
-        mapEl.style.pointerEvents  = '';
+        mapEl.style.opacity       = '1';
+        mapEl.style.pointerEvents = '';
         document.getElementById('close-btn').textContent = '[ABORT]';
         closePanel();
       }
+      // keep focus on DOS input
+      setTimeout(() => dosInput.focus(), 50);
     }
 
     // ── DOS 彩蛋输入框（仅桌面端显示） ──────────────────────────
@@ -235,7 +240,7 @@
       await new Promise(r => requestAnimationFrame(r));
       dosWrap.style.opacity = '1';
       await sleep(200);
-      const prompt = 'C:\\G2306> ';
+      const prompt = getPromptPrefix(localStorage.getItem('g2306_token')) + '> ';
       for (const ch of prompt) {
         dosPromptEl.textContent += ch;
         await sleep(40 + Math.random() * 30);
@@ -244,14 +249,30 @@
       dosInput.focus();
     }
 
-    // 密码遮掩：input 事件同步更新 terminal 里的 lineDiv
+    // 密码遮掩：input 事件 — 把输入框内容清空，只保留 maskValue，终端回显 *
     dosInput.addEventListener('input', () => {
       if (!pendingResolve?.mask) return;
       maskValue = dosInput.value;
+      dosInput.value = '';
       if (pendingResolve.lineDiv) {
         pendingResolve.lineDiv.textContent = pendingResolve.label + '*'.repeat(maskValue.length);
       }
+      const terminal = document.getElementById('terminal-content');
+      if (!terminal._userScrolled) requestAnimationFrame(() => { terminal.scrollTop = terminal.scrollHeight; });
     });
+
+    // 密码 Backspace：dosInput 已清空，需要手动处理删除
+    dosInput.addEventListener('keydown', e => {
+      if (!pendingResolve?.mask) return;
+      if (e.key === 'Backspace' && maskValue.length > 0) {
+        e.preventDefault();
+        maskValue = maskValue.slice(0, -1);
+        dosInput.value = '';
+        if (pendingResolve.lineDiv) {
+          pendingResolve.lineDiv.textContent = pendingResolve.label + '*'.repeat(maskValue.length);
+        }
+      }
+    }, true); // capture phase so it fires before the main keydown handler
 
     function makeCtx() {
       return {
@@ -290,77 +311,133 @@
       };
     }
 
-    if (!isMobile) {
-      dosInput.addEventListener('keydown', async e => {
-        // ── 多步骤命令等待输入 ─────────────────────────────────
-        if (pendingResolve) {
-          if (e.key === 'Enter') {
-            e.preventDefault();
-            const val = pendingResolve.mask ? maskValue : dosInput.value;
-            dosInput.value = '';
-            maskValue = '';
-            const { resolve, mask, lineDiv, label } = pendingResolve;
-            pendingResolve = null;
-            // 更新 terminal 里的行显示
-            if (lineDiv) lineDiv.textContent = label + (mask ? '*'.repeat(val.length) : val);
-            resolve(val || null);
-          } else if (e.key === 'Escape') {
-            e.preventDefault();
-            const { resolve } = pendingResolve;
-            pendingResolve = null;
-            dosInput.value = '';
-            maskValue = '';
-            resolve(null);
-          }
-          return; // 等待期间不处理其他按键
-        }
+    let isFullscreen = false;
+    let commandRunning = false; // blocks new commands while one is executing
 
-        // ── 上下历史 ───────────────────────────────────────────
-        if (e.key === 'ArrowUp') {
-          e.preventDefault();
-          if (!history.length) return;
-          histIdx = Math.min(histIdx + 1, history.length - 1);
-          dosInput.value = history[history.length - 1 - histIdx];
-          tabBase = null;
-          return;
-        }
-        if (e.key === 'ArrowDown') {
-          e.preventDefault();
-          if (histIdx <= 0) { histIdx = -1; dosInput.value = ''; tabBase = null; return; }
-          histIdx--;
-          dosInput.value = history[history.length - 1 - histIdx];
-          tabBase = null;
-          return;
-        }
+    // keep input focused at all times (unless user is interacting with something else)
+    document.addEventListener('click', e => {
+      if (!isMobile && !e.target.closest('a, button, input, select, textarea, [onclick]')) {
+        dosInput.focus();
+      }
+    });
 
-        // ── Tab 补全 ───────────────────────────────────────────
-        if (e.key === 'Tab') {
-          e.preventDefault();
-          const cur = dosInput.value.trim().toLowerCase();
-          if (tabBase === null) { tabBase = cur; tabMatches = CMD_LIST.filter(c => c.startsWith(tabBase)); tabPos = 0; }
-          if (!tabMatches.length) return;
-          dosInput.value = tabMatches[tabPos % tabMatches.length].toUpperCase();
-          tabPos++;
-          return;
-        }
-        if (e.key !== 'Tab') tabBase = null;
-        if (e.key !== 'Enter') return;
 
-        // ── Enter：执行命令 ────────────────────────────────────
-        const cmd = dosInput.value.trim();
-        dosInput.value = '';
-        histIdx = -1;
-        if (!cmd) return;
-        history.push(cmd);
-
-        const terminal = document.getElementById('terminal-content');
-        const ctx = makeCtx();
-        openPanel();
-        await biosAppend(terminal, [{ text: `C:\\G2306> ${cmd}` }]);
-        const lines = await runCommand(cmd, ctx);
-        if (lines?.length) await biosAppend(terminal, lines);
-      });
+    function updatePrompt() {
+      dosPromptEl.textContent = getPromptPrefix(localStorage.getItem('g2306_token')) + '> ';
     }
+
+    // ── 主键盘监听（Enter / Ctrl+C / 历史 / Tab / 多步骤输入） ──
+    dosInput.addEventListener('keydown', async e => {
+
+      // Ctrl+C: abort
+      if (e.ctrlKey && e.key === 'c') {
+        e.preventDefault();
+        if (pendingResolve) {
+          const { resolve } = pendingResolve;
+          pendingResolve = null;
+          maskValue = '';
+          dosInput.value = '';
+          resolve(null);
+        }
+        commandRunning = false;
+        isFullscreen = false;
+        const panel = document.getElementById('info-panel');
+        panel.classList.remove('fullscreen');
+        document.getElementById('map-container').style.opacity = '1';
+        document.getElementById('map-container').style.pointerEvents = '';
+        document.getElementById('close-btn').textContent = '[ABORT]';
+        const terminal = document.getElementById('terminal-content');
+        const div = document.createElement('div');
+        div.textContent = '^C';
+        div.style.color = 'var(--hud-danger)';
+        terminal.appendChild(div);
+        if (!terminal._userScrolled) requestAnimationFrame(() => { terminal.scrollTop = terminal.scrollHeight; });
+        dosInput.focus();
+        return;
+      }
+
+      // ── 多步骤命令等待输入 ─────────────────────────────────
+      if (pendingResolve) {
+        if (e.key === 'Enter') {
+          e.preventDefault();
+          const val = pendingResolve.mask ? maskValue : dosInput.value;
+          dosInput.value = '';
+          maskValue = '';
+          const { resolve, mask, lineDiv, label } = pendingResolve;
+          pendingResolve = null;
+          if (lineDiv) lineDiv.textContent = label + (mask ? '*'.repeat(val.length) : val);
+          resolve(val || null);
+        } else if (e.key === 'Escape') {
+          e.preventDefault();
+          const { resolve } = pendingResolve;
+          pendingResolve = null;
+          dosInput.value = '';
+          maskValue = '';
+          resolve(null);
+        }
+        return;
+      }
+
+      // ── 上下历史 ───────────────────────────────────────────
+      if (e.key === 'ArrowUp') {
+        e.preventDefault();
+        if (!history.length) return;
+        histIdx = Math.min(histIdx + 1, history.length - 1);
+        dosInput.value = history[history.length - 1 - histIdx];
+        tabBase = null;
+        return;
+      }
+      if (e.key === 'ArrowDown') {
+        e.preventDefault();
+        if (histIdx <= 0) { histIdx = -1; dosInput.value = ''; tabBase = null; return; }
+        histIdx--;
+        dosInput.value = history[history.length - 1 - histIdx];
+        tabBase = null;
+        return;
+      }
+
+      // ── Tab 补全 ───────────────────────────────────────────
+      if (e.key === 'Tab') {
+        e.preventDefault();
+        const cur = dosInput.value.trim().toLowerCase();
+        if (tabBase === null) { tabBase = cur; tabMatches = CMD_LIST.filter(c => c.startsWith(tabBase)); tabPos = 0; }
+        if (!tabMatches.length) return;
+        dosInput.value = tabMatches[tabPos % tabMatches.length].toUpperCase();
+        tabPos++;
+        return;
+      }
+      if (e.key !== 'Tab') tabBase = null;
+      if (e.key !== 'Enter') return;
+
+      // block input while in fullscreen ROSTER mode (only exit commands allowed)
+      const rawCmd = dosInput.value.trim().toLowerCase();
+      if (isFullscreen && rawCmd !== 'exit' && rawCmd !== 'quit' && rawCmd !== 'close') {
+        dosInput.value = '';
+        return;
+      }
+
+      // block concurrent commands
+      if (commandRunning) { dosInput.value = ''; return; }
+
+      // ── Enter：执行命令 ────────────────────────────────────
+      const cmd = dosInput.value.trim();
+      dosInput.value = '';
+      histIdx = -1;
+      if (!cmd) return;
+      history.push(cmd);
+
+      commandRunning = true;
+      const terminal = document.getElementById('terminal-content');
+      const ctx = makeCtx();
+      openPanel();
+      await biosAppend(terminal, [{ text: `${getPromptPrefix(localStorage.getItem('g2306_token'))}> ${cmd}` }]);
+      const lines = await runCommand(cmd, ctx);
+      if (lines?.length) await biosAppend(terminal, lines);
+      commandRunning = false;
+      updatePrompt();
+      dosInput.focus();
+    });
+    updatePrompt();
   </script>
 </body>
 </html>

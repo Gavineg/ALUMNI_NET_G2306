@@ -55,44 +55,16 @@ export async function initStudentPortal(container) {
       <div class="msg" id="s-msg"></div>
 
       <div style="border-top:1px dashed var(--hud-border);padding-top:18px;margin-top:18px">
-        <div style="font-size:11px;color:var(--hud-text-dim);letter-spacing:2px;margin-bottom:14px">&gt; SERVER_CONFIG // HACKNET</div>
-
-        <div class="field-group">
-          <label class="field-label">&gt; HOSTNAME <span style="color:var(--hud-text-dim)">(LEAVE BLANK FOR AUTO)</span></label>
-          <input class="hud-input" id="s-hostname" placeholder="E.G. MY-SERVER" maxlength="32">
+        <div style="font-size:11px;color:var(--hud-text-dim);letter-spacing:2px;margin-bottom:8px">&gt; SERVER_CONFIG</div>
+        <div style="font-size:11px;color:var(--hud-text-dim);line-height:1.8">
+          USE THE DOS TERMINAL ON THE MAP PAGE TO CONFIGURE YOUR SERVER.<br>
+          COMMANDS: <span style="color:var(--hud-primary)">SERVERCONF</span> — show current config<br>
+          &nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;<span style="color:var(--hud-primary)">SERVERSET HOSTNAME &lt;name&gt;</span><br>
+          &nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;<span style="color:var(--hud-primary)">SERVERSET PORTS &lt;22,80,443&gt;</span><br>
+          &nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;<span style="color:var(--hud-primary)">SERVERSET DIFFICULTY &lt;1-5&gt;</span><br>
+          &nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;<span style="color:var(--hud-primary)">SERVERSET THEME &lt;name&gt;</span><br>
+          &nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;<span style="color:var(--hud-primary)">LOOT</span> — edit your hack loot file
         </div>
-
-        <div class="field-group">
-          <label class="field-label">&gt; OPEN_PORTS <span style="color:var(--hud-text-dim)">(COMMA SEPARATED)</span></label>
-          <input class="hud-input" id="s-ports" placeholder="E.G. 22,80,443">
-        </div>
-
-        <div class="field-group">
-          <label class="field-label">&gt; DIFFICULTY <span id="s-diff-label" style="color:var(--hud-primary)">★★☆☆☆</span></label>
-          <input type="range" id="s-difficulty" min="1" max="5" value="2"
-            style="width:100%;accent-color:var(--hud-primary);margin-top:6px">
-        </div>
-
-        <div class="field-group">
-          <label class="field-label">&gt; THEME <span style="color:var(--hud-text-dim)">(VISITORS SEE THIS COLOR)</span></label>
-          <select class="hud-input" id="s-theme">
-            <option value="DEFAULT">DEFAULT (GREEN)</option>
-            <option value="MATRIX_GREEN">MATRIX_GREEN</option>
-            <option value="ICE_BLUE">ICE_BLUE</option>
-            <option value="BLOOD_RED">BLOOD_RED</option>
-            <option value="AMBER">AMBER</option>
-            <option value="PHANTOM">PHANTOM</option>
-          </select>
-        </div>
-
-        <div class="field-group">
-          <label class="field-label">&gt; HACK_LOOT <span class="char-count" id="s-loot-count">0/500</span></label>
-          <textarea class="hud-input" id="s-loot" rows="4" maxlength="500"
-            placeholder="WHAT INTRUDERS SEE AFTER GAINING ROOT ACCESS..."></textarea>
-        </div>
-
-        <button class="hud-btn full ghost" id="s-server-save-btn">[SAVE_SERVER_CONFIG]</button>
-        <div class="msg" id="s-server-msg"></div>
       </div>
 
       <div style="border-top:1px dashed var(--hud-border);padding-top:18px;margin-top:18px">
@@ -132,17 +104,6 @@ async function loadProfile(container) {
   if (profile.longitude) container.querySelector('#s-lon').value = profile.longitude;
   if (profile.latitude)  container.querySelector('#s-lat').value = profile.latitude;
   setCengfan(container, !!profile.can_cengfan);
-
-  // Server config
-  container.querySelector('#s-hostname').value = profile.server_hostname || '';
-  container.querySelector('#s-ports').value    = profile.server_ports    || '';
-  container.querySelector('#s-loot').value     = profile.hack_loot       || '';
-  const diff = profile.server_difficulty || 2;
-  container.querySelector('#s-difficulty').value = diff;
-  updateDiffLabel(container, diff);
-  const themeEl = container.querySelector('#s-theme');
-  if (profile.server_theme) themeEl.value = profile.server_theme;
-  updateLootCount(container, profile.hack_loot || '');
 }
 
 function setCengfan(container, canCengfan) {
@@ -155,13 +116,10 @@ function updateCharCount(container, text) {
   container.querySelector('#s-char-count').textContent = `${text.length}/100`;
 }
 
-function updateLootCount(container, text) {
-  container.querySelector('#s-loot-count').textContent = `${text.length}/500`;
-}
-
 function updateDiffLabel(container, val) {
   const n = parseInt(val);
-  container.querySelector('#s-diff-label').textContent = '★'.repeat(n) + '☆'.repeat(5 - n);
+  const el = container.querySelector('#s-diff-label');
+  if (el) el.textContent = '★'.repeat(n) + '☆'.repeat(5 - n);
 }
 
 function updateCoordDisplay(container, lon, lat, city) {
@@ -179,14 +137,6 @@ function setMsg(container, text, type = 'ok') {
 function bindStudentEvents(container) {
   container.querySelector('#s-status').addEventListener('input', e => {
     updateCharCount(container, e.target.value);
-  });
-
-  container.querySelector('#s-loot').addEventListener('input', e => {
-    updateLootCount(container, e.target.value);
-  });
-
-  container.querySelector('#s-difficulty').addEventListener('input', e => {
-    updateDiffLabel(container, e.target.value);
   });
 
   container.querySelector('#s-avail-btn').addEventListener('click', () => setCengfan(container, true));
@@ -247,27 +197,6 @@ function bindStudentEvents(container) {
     }
     btn.disabled = false;
     btn.textContent = '[SAVE_CHANGES]';
-  });
-
-  container.querySelector('#s-server-save-btn').addEventListener('click', async () => {
-    const btn = container.querySelector('#s-server-save-btn');
-    const msg = container.querySelector('#s-server-msg');
-    btn.disabled = true; btn.textContent = '[SAVING...]';
-    const payload = {
-      server_hostname:   container.querySelector('#s-hostname').value.trim() || null,
-      server_ports:      container.querySelector('#s-ports').value.trim() || null,
-      server_difficulty: parseInt(container.querySelector('#s-difficulty').value),
-      server_theme:      container.querySelector('#s-theme').value,
-      hack_loot:         container.querySelector('#s-loot').value.trim()
-    };
-    try {
-      const res = await apiFetch('/api/student/me', { method: 'PUT', body: JSON.stringify(payload) });
-      if (res.ok) { msg.textContent = '> SERVER CONFIG SAVED [OK]'; msg.className = 'msg ok'; }
-      else { const d = await res.json(); msg.textContent = `> [ERR] ${d.error}`; msg.className = 'msg err'; }
-    } catch {
-      msg.textContent = '> [ERR] SAVE FAILED'; msg.className = 'msg err';
-    }
-    btn.disabled = false; btn.textContent = '[SAVE_SERVER_CONFIG]';
   });
 
   container.querySelector('#s-pw-btn').addEventListener('click', async () => {
