@@ -120,6 +120,8 @@ function helpLines() {
     L('    ME              — show your profile'),
     L('    SET <field> <v> — update profile field (UNIVERSITY/MAJOR/STATUS/CENGFAN)'),
     L('    PASSWD          — change password'),
+    L('    PORTAL          — open student/admin dashboard (auto-login)'),
+    L('    CD <path>       — navigate virtual directories (C:\\G2306\\<username>)'),
     L(''),
     L('  [ RECON ]'),
     L('    WHOAMI          — show current user'),
@@ -205,14 +207,58 @@ export async function runCommand(raw, ctx) {
       const data = await res.json();
       if (!res.ok) return [L(`AUTH FAILED: ${(data.error||'unknown').toUpperCase()}`, 'ERR')];
       ctx.setToken(data.token);
-      return [L(`AUTHENTICATED AS: ${data.name}`, 'OK'), L(`ROLE: ${data.isAdmin ? 'ADMINISTRATOR' : 'STUDENT'}`, 'RDY'), L('SESSION TOKEN STORED.', 'OK')];
+      // save full session info so admin.html can auto-login without re-auth
+      localStorage.setItem('g2306_user', JSON.stringify({ isAdmin: !!data.isAdmin, name: data.name, username: data.username }));
+      // mark as terminal-login so the page can auto-logout on close
+      sessionStorage.setItem('g2306_terminal_session', '1');
+      return [
+        L(`AUTHENTICATED AS: ${data.name}`, 'OK'),
+        L(`ROLE: ${data.isAdmin ? 'ADMINISTRATOR' : 'STUDENT'}`, 'RDY'),
+        L('SESSION TOKEN STORED. USE "PORTAL" TO OPEN DASHBOARD.', 'OK'),
+      ];
     } catch { return [L('CONNECTION FAILED', 'ERR')]; }
   }
 
   if (cmd === 'logout') {
     if (!ctx.getToken()) return [L('NOT AUTHENTICATED', 'ERR')];
     ctx.setToken(null);
+    localStorage.removeItem('g2306_user');
+    sessionStorage.removeItem('g2306_terminal_session');
     return [L('SESSION TERMINATED.', 'OK'), L('TOKEN PURGED.', 'RDY')];
+  }
+
+  // ── PORTAL: jump to dashboard (no re-login needed) ─────────
+  if (cmd === 'portal' || cmd === 'dashboard') {
+    const tok = ctx.getToken();
+    if (!tok) return [L('NOT AUTHENTICATED. LOGIN FIRST.', 'ERR')];
+    window.open('admin.html?auto=1', '_blank');
+    return [L('PORTAL LAUNCHED IN NEW TAB.', 'OK'), L('DASHBOARD WILL USE YOUR CURRENT SESSION.', 'RDY')];
+  }
+
+  // ── CD: virtual directory navigation ───────────────────────
+  if (cmd === 'cd') {
+    const tok = ctx.getToken();
+    let username = '';
+    if (tok) { try { username = (JSON.parse(atob(tok.split('.')[1])).username || '').toUpperCase().replace(/\s+/g,'_'); } catch {} }
+    const target = (arg1 || '').replace(/\\/g, '/').replace(/\/+$/, '').toUpperCase();
+    const home = username ? `C:/G2306/${username}` : 'C:/G2306';
+    const valid = ['C:', 'C:/G2306', home, 'C:/G2306/SYSTEM', 'C:/G2306/NET', '..', '~', ''];
+    if (!target || target === '~' || target === home || target === 'C:/G2306/' + username) {
+      return [L(`${home}> `, 'OK')];
+    }
+    if (target === 'C:' || target === 'C:/G2306') {
+      return [L('C:\\G2306> ', 'OK')];
+    }
+    if (target === 'C:/G2306/SYSTEM' || target === 'SYSTEM') {
+      return [L('C:\\G2306\\SYSTEM>', 'OK'), L('  kernel.sys  net.dll  auth.bin  bootlog.txt', 'RDY')];
+    }
+    if (target === 'C:/G2306/NET' || target === 'NET') {
+      return [L('C:\\G2306\\NET>', 'OK'), L('  SCAN to list available nodes.', 'RDY')];
+    }
+    if (target === '..' || target === '') {
+      return [L('C:\\G2306> ', 'OK')];
+    }
+    return [L(`CD: PATH NOT FOUND: ${arg1}`, 'ERR')];
   }
 
   if (cmd === 'me') {

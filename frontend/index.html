@@ -526,6 +526,15 @@
       dosInput.focus();
     });
     updatePrompt();
+
+    // Auto-logout when tab closes if session was started from this terminal
+    window.addEventListener('beforeunload', () => {
+      if (sessionStorage.getItem('g2306_terminal_session')) {
+        localStorage.removeItem('g2306_token');
+        localStorage.removeItem('g2306_user');
+        sessionStorage.removeItem('g2306_terminal_session');
+      }
+    });
   </script>
 </body>
 </html>
