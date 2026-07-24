@@ -333,6 +333,7 @@ body.portal-body {
   line-height: 1.7;
   color: var(--hud-primary);
   white-space: pre-wrap;
+  text-transform: none;
 }
 
 .portal-terminal-input-row {
@@ -349,6 +350,7 @@ body.portal-body {
   white-space: nowrap;
   flex-shrink: 0;
   letter-spacing: 0.5px;
+  text-transform: none;
 }
 
 .portal-terminal-input {
