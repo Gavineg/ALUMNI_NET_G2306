@@ -7,9 +7,9 @@ import { API_BASE } from './config.js';
 const TOKEN_KEY = 'g2306_token';
 const INFO_KEY  = 'g2306_user';
 
-export function saveSession(token, isAdmin, name) {
+export function saveSession(token, isAdmin, name, username) {
   localStorage.setItem(TOKEN_KEY, token);
-  localStorage.setItem(INFO_KEY, JSON.stringify({ isAdmin, name }));
+  localStorage.setItem(INFO_KEY, JSON.stringify({ isAdmin, name, username }));
 }
 
 export function clearSession() {
@@ -48,6 +48,6 @@ export async function login(username, password) {
   });
   const data = await res.json();
   if (!res.ok) throw new Error(data.error || 'login failed');
-  saveSession(data.token, data.isAdmin, data.name);
+  saveSession(data.token, data.isAdmin, data.name, data.username);
   return data;
 }

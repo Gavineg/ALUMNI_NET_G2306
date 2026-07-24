@@ -94,10 +94,10 @@ export default {
       }
 
       const token = await signJwt(
-        { sub: row.id, name: row.display_name, admin: !!row.is_admin },
+        { sub: row.id, name: row.display_name, username: row.username, admin: !!row.is_admin },
         env.JWT_SECRET
       );
-      return json({ token, isAdmin: !!row.is_admin, name: row.display_name });
+      return json({ token, isAdmin: !!row.is_admin, name: row.display_name, username: row.username });
     }
 
     // ── Auth guard ────────────────────────────────────────────

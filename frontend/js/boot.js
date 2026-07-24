@@ -72,6 +72,14 @@ export async function biosAppend(terminal, lines) {
   typingCtrl = new AbortController();
   const { signal } = typingCtrl;
 
+  // abort-aware sleep — 信号触发时立即返回
+  function asleep(ms) {
+    return new Promise(r => {
+      const t = setTimeout(r, ms);
+      signal.addEventListener('abort', () => { clearTimeout(t); r(); }, { once: true });
+    });
+  }
+
   attachScrollTracker(terminal);
 
   for (const item of lines) {
@@ -79,7 +87,6 @@ export async function biosAppend(terminal, lines) {
     const div = document.createElement('div');
     terminal.appendChild(div);
 
-    // 先滚到底，再开始打字，确保新行从可见区域底部生成
     if (!terminal._userScrolled) scrollToBottom(terminal);
     await new Promise(r => requestAnimationFrame(r));
 
@@ -87,8 +94,10 @@ export async function biosAppend(terminal, lines) {
       if (signal.aborted) return;
       div.textContent += char;
       if (!terminal._userScrolled) scrollToBottom(terminal);
-      await sleep(16 + Math.random() * 22);
+      await asleep(16 + Math.random() * 22);
     }
+
+    if (signal.aborted) return;
 
     if (item.status) {
       const span = document.createElement('span');
@@ -98,7 +107,7 @@ export async function biosAppend(terminal, lines) {
     }
 
     if (!terminal._userScrolled) scrollToBottom(terminal);
-    await sleep(160 + Math.random() * 200);
+    await asleep(160 + Math.random() * 200);
   }
 }
 

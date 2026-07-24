@@ -180,17 +180,46 @@
   transform: none !important;
   clip-path: none !important;
   z-index: 100;
-  padding: 90px 40px 30px;
+  padding: 30px 40px 80px;
 }
 #info-panel.fullscreen .panel-header,
 #info-panel.fullscreen .close-btn { display: none; }
 #info-panel.fullscreen #terminal-content {
-  max-height: calc(100vh - 120px);
+  max-height: calc(100vh - 140px);
 }
 
-/* 全屏时 header 浮在面板上方 */
-body.is-fullscreen #hud-header {
+/* 全屏模式底部输入行 */
+#fullscreen-input-row {
+  display: none;
+  position: fixed;
+  bottom: 0; left: 0; right: 0;
+  padding: 12px 40px;
+  background: var(--hud-bg);
+  border-top: 1px dashed var(--hud-border);
   z-index: 101;
+  font-size: 13px;
+  color: var(--hud-primary);
+  display: flex;
+  align-items: center;
+  gap: 0;
+}
+#fullscreen-input-row.hidden { display: none !important; }
+#fullscreen-prompt {
+  color: var(--hud-text-dim);
+  white-space: nowrap;
+  flex-shrink: 0;
+}
+#fullscreen-input {
+  flex: 1;
+  background: transparent;
+  border: none;
+  outline: none;
+  color: var(--hud-primary);
+  font-family: inherit;
+  font-size: 13px;
+  caret-color: var(--hud-primary);
+  padding: 0 6px;
+  text-transform: none;
 }
 
 /* ── PC 端面板位置 ────────────────────────────────────── */

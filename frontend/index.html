@@ -33,6 +33,12 @@
     <div id="terminal-content"></div>
   </div>
 
+  <!-- 全屏模式底部输入行 -->
+  <div id="fullscreen-input-row" class="hidden">
+    <span id="fullscreen-prompt">C:\G2306&gt;&nbsp;</span>
+    <input id="fullscreen-input" type="text" autocomplete="off" spellcheck="false">
+  </div>
+
   <script type="module">
     import { FLIGHT_TIME, NODE_DELAY } from './js/config.js';
     import { glitchResolve, typeWrite, sleep, abortBios } from './js/boot.js';
@@ -197,26 +203,80 @@
     window.addEventListener('resize', () => chart.resize());
 
     // ── 全屏终端控制 ───────────────────────────────────────────
+    const fsInputRow    = document.getElementById('fullscreen-input-row');
+    const fsInput       = document.getElementById('fullscreen-input');
+    const fsPromptEl    = document.getElementById('fullscreen-prompt');
+
+    function updateFsPrompt() {
+      fsPromptEl.textContent = getPromptPrefix(localStorage.getItem('g2306_token')) + '> ';
+    }
+
     function setFullscreen(on) {
-      const panel   = document.getElementById('info-panel');
-      const mapEl   = document.getElementById('map-container');
-      isFullscreen  = on;
+      const panel  = document.getElementById('info-panel');
+      const mapEl  = document.getElementById('map-container');
+      isFullscreen = on;
       if (on) {
         panel.classList.add('active', 'fullscreen');
         document.body.classList.add('is-fullscreen');
         mapEl.style.opacity       = '0';
         mapEl.style.pointerEvents = 'none';
         document.getElementById('close-btn').textContent = '[EXIT]';
+        fsInputRow.classList.remove('hidden');
+        updateFsPrompt();
+        setTimeout(() => fsInput.focus(), 50);
       } else {
         panel.classList.remove('fullscreen');
         document.body.classList.remove('is-fullscreen');
         mapEl.style.opacity       = '1';
         mapEl.style.pointerEvents = '';
         document.getElementById('close-btn').textContent = '[ABORT]';
+        fsInputRow.classList.add('hidden');
         closePanel();
+        setTimeout(() => dosInput.focus(), 50);
       }
-      setTimeout(() => dosInput.focus(), 50);
     }
+
+    // 全屏底部输入框的键盘处理
+    fsInput.addEventListener('keydown', async e => {
+      // Ctrl+C
+      if (e.ctrlKey && e.key === 'c') {
+        e.preventDefault();
+        abortBios();
+        if (pendingResolve) {
+          pendingResolve.resolve(null);
+          pendingResolve = null; maskValue = ''; fsInput.value = '';
+        }
+        commandRunning = false;
+        const terminal = document.getElementById('terminal-content');
+        const div = document.createElement('div');
+        div.textContent = '^C'; div.style.color = 'var(--hud-danger)';
+        terminal.appendChild(div);
+        terminal.scrollTop = terminal.scrollHeight;
+        fsInput.focus();
+        return;
+      }
+
+      // pendingResolve（全屏下的多步骤输入走 dosInput，这里只处理 Enter 命令）
+      if (e.key !== 'Enter') return;
+      if (commandRunning) { fsInput.value = ''; return; }
+
+      const cmd = fsInput.value.trim();
+      fsInput.value = '';
+      if (!cmd) return;
+      history.push(cmd); histIdx = -1;
+
+      commandRunning = true;
+      const terminal = document.getElementById('terminal-content');
+      const ctx = makeCtx();
+      updateFsPrompt();
+      await biosAppend(terminal, [{ text: `${getPromptPrefix(localStorage.getItem('g2306_token'))}> ${cmd}` }]);
+      const lines = await runCommand(cmd, ctx);
+      if (lines?.length) await biosAppend(terminal, lines);
+      commandRunning = false;
+      updateFsPrompt();
+      updatePrompt();
+      fsInput.focus();
+    });
 
     // ── DOS 彩蛋输入框（仅桌面端显示） ──────────────────────────
     const dosWrap     = document.getElementById('dos-input-wrap');
@@ -251,10 +311,10 @@
       dosInput.focus();
     }
 
-    // 密码遮掩：input 事件 — 把输入框内容清空，只保留 maskValue，终端回显 *
+    // 密码遮掩：input 事件 — 累加新字符到 maskValue，清空输入框，终端回显 *
     dosInput.addEventListener('input', () => {
       if (!pendingResolve?.mask) return;
-      maskValue = dosInput.value;
+      maskValue += dosInput.value;   // 累加，不是覆盖
       dosInput.value = '';
       if (pendingResolve.lineDiv) {
         pendingResolve.lineDiv.textContent = pendingResolve.label + '*'.repeat(maskValue.length);

@@ -263,15 +263,30 @@ function initPortalTerminal(container, session) {
   const cmdHistory = [];
   let histIdx = -1;
 
-  // 当前目录（虚拟，仅显示用）
-  let cwd = '/home/' + (session?.name || 'user').toLowerCase().replace(/\s+/g, '');
+  // 从 JWT 取 username slug（用 sub id，避免中文）
+  function getUserSlug() {
+    try {
+      const tok = localStorage.getItem('g2306_token');
+      const p = JSON.parse(atob(tok.split('.')[1]));
+      // name 可能是中文，用 sub（student id）作为目录名
+      return (p.sub || 'user').toString().toLowerCase();
+    } catch { return 'user'; }
+  }
 
-  // 服务器虚拟文件系统（固定结构）
+  const userSlug = getUserSlug();
+
+  // 当前目录
+  let cwd = `/home/${userSlug}`;
+
+  // 服务器虚拟文件系统
   const SERVER_FS = {
     '/': ['bin', 'boot', 'dev', 'etc', 'home', 'lib', 'proc', 'root', 'srv', 'tmp', 'usr', 'var'],
     '/etc': ['apt', 'cron.d', 'g2306', 'hosts', 'nginx', 'passwd', 'shadow', 'ssh', 'systemd'],
-    '/etc/g2306': ['.env'],         // 藏在这里
-    '/home': [cwd.split('/').pop()],
+    '/etc/g2306': ['.env'],
+    '/home': [userSlug],
+    [`/home/${userSlug}`]: ['.bashrc', '.ssh', 'logs'],
+    [`/home/${userSlug}/.ssh`]: ['authorized_keys', 'known_hosts'],
+    [`/home/${userSlug}/logs`]: ['access.log', 'error.log'],
     '/var': ['log', 'run', 'spool', 'tmp', 'www'],
     '/var/log': ['auth.log', 'syslog', 'nginx'],
     '/usr': ['bin', 'local', 'share'],
@@ -279,9 +294,8 @@ function initPortalTerminal(container, session) {
   };
 
   function getPrefix() {
-    const tok = localStorage.getItem('g2306_token');
-    const name = session?.name ? session.name.toUpperCase().replace(/\s+/g,'_') : 'USER';
-    return `C:\\G2306\\${name}`;
+    const u = (session?.username || session?.name || 'USER').toUpperCase().replace(/\s+/g,'_');
+    return `C:\\G2306\\${u}`;
   }
 
   function updatePrompt() {
@@ -445,7 +459,7 @@ function initPortalTerminal(container, session) {
   // 密码遮掩
   input.addEventListener('input', () => {
     if (!pendingResolve?.mask) return;
-    maskValue = input.value;
+    maskValue += input.value;   // 累加，不是覆盖
     input.value = '';
     const last = output.lastElementChild;
     if (last) last.textContent = pendingResolve.label + '*'.repeat(maskValue.length);

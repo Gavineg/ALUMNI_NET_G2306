@@ -82,7 +82,7 @@ export function getPromptPrefix(token) {
   if (!token) return 'C:\\G2306';
   try {
     const p = JSON.parse(atob(token.split('.')[1]));
-    const u = (p.name || 'GUEST').toUpperCase().replace(/\s+/g, '_');
+    const u = (p.username || p.name || 'GUEST').toUpperCase().replace(/\s+/g, '_');
     return `C:\\G2306\\${u}`;
   } catch { return 'C:\\G2306'; }
 }
