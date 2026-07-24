@@ -281,16 +281,37 @@ function initPortalTerminal(container, session) {
   // 服务器虚拟文件系统
   const SERVER_FS = {
     '/': ['bin', 'boot', 'dev', 'etc', 'home', 'lib', 'proc', 'root', 'srv', 'tmp', 'usr', 'var'],
-    '/etc': ['apt', 'cron.d', 'g2306', 'hosts', 'nginx', 'passwd', 'shadow', 'ssh', 'systemd'],
+    '/bin': ['bash', 'cat', 'cp', 'echo', 'grep', 'ls', 'mkdir', 'mv', 'rm', 'sh', 'touch'],
+    '/boot': ['grub', 'vmlinuz', 'initrd.img', 'System.map'],
+    '/dev': ['null', 'zero', 'random', 'urandom', 'sda', 'sda1', 'tty', 'pts'],
+    '/etc': ['apt', 'cron.d', 'g2306', 'hosts', 'hostname', 'nginx', 'passwd', 'shadow', 'ssh', 'systemd', 'os-release'],
+    '/etc/apt': ['sources.list', 'trusted.gpg'],
     '/etc/g2306': ['.env'],
+    '/etc/nginx': ['nginx.conf', 'sites-available', 'sites-enabled'],
+    '/etc/nginx/sites-available': ['default', 'g2306'],
+    '/etc/nginx/sites-enabled': ['default'],
+    '/etc/ssh': ['sshd_config', 'ssh_config', 'ssh_host_rsa_key.pub', 'ssh_host_ed25519_key.pub'],
+    '/etc/systemd': ['system', 'network', 'resolved.conf'],
+    '/etc/systemd/system': ['g2306.service', 'nginx.service', 'sshd.service'],
     '/home': [userSlug],
-    [`/home/${userSlug}`]: ['.bashrc', '.ssh', 'logs'],
+    [`/home/${userSlug}`]: ['.bashrc', '.profile', '.ssh', 'logs'],
     [`/home/${userSlug}/.ssh`]: ['authorized_keys', 'known_hosts'],
     [`/home/${userSlug}/logs`]: ['access.log', 'error.log'],
-    '/var': ['log', 'run', 'spool', 'tmp', 'www'],
-    '/var/log': ['auth.log', 'syslog', 'nginx'],
-    '/usr': ['bin', 'local', 'share'],
+    '/lib': ['modules', 'systemd', 'x86_64-linux-gnu'],
+    '/proc': ['1', 'cpuinfo', 'meminfo', 'mounts', 'net', 'uptime', 'version'],
+    '/root': ['.bashrc', '.profile', '.ssh'],
     '/srv': ['http', 'ftp'],
+    '/srv/http': ['index.html', 'static'],
+    '/tmp': ['.ICE-unix', '.X11-unix'],
+    '/usr': ['bin', 'include', 'lib', 'local', 'share', 'sbin'],
+    '/usr/bin': ['curl', 'git', 'node', 'npm', 'python3', 'ssh', 'vim', 'wget'],
+    '/usr/local': ['bin', 'etc', 'lib', 'share'],
+    '/usr/local/bin': ['g2306-node'],
+    '/var': ['log', 'run', 'spool', 'tmp', 'www'],
+    '/var/log': ['auth.log', 'syslog', 'nginx', 'kern.log', 'dpkg.log'],
+    '/var/log/nginx': ['access.log', 'error.log'],
+    '/var/www': ['html'],
+    '/var/www/html': ['index.html'],
   };
 
   function cwdDisplay() {
@@ -407,6 +428,82 @@ function initPortalTerminal(container, session) {
           `${ts()} g2306-node systemd[1]: Started G2306 Node Service.`,
           `${ts()} g2306-node cron[892]: (CRON) INFO (pidfile fd = 3)`,
         ],
+        '/etc/hostname': [`g2306-node`],
+        '/etc/os-release': [
+          `NAME="Debian GNU/Linux"`,
+          `VERSION_ID="12"`,
+          `ID=debian`,
+          `PRETTY_NAME="Debian GNU/Linux 12 (bookworm)"`,
+        ],
+        '/etc/nginx/nginx.conf': [
+          `user www-data;`,
+          `worker_processes auto;`,
+          `error_log /var/log/nginx/error.log;`,
+          `events { worker_connections 1024; }`,
+          `http {`,
+          `  include /etc/nginx/sites-enabled/*;`,
+          `  server_tokens off;`,
+          `}`,
+        ],
+        '/etc/nginx/sites-available/g2306': [
+          `server {`,
+          `  listen 80;`,
+          `  server_name g2306-node;`,
+          `  root /var/www/html;`,
+          `  location /api/ { proxy_pass http://127.0.0.1:3000; }`,
+          `}`,
+        ],
+        '/etc/ssh/sshd_config': [
+          `Port 22`,
+          `PermitRootLogin no`,
+          `PasswordAuthentication no`,
+          `PubkeyAuthentication yes`,
+          `AuthorizedKeysFile .ssh/authorized_keys`,
+          `X11Forwarding no`,
+        ],
+        '/etc/systemd/system/g2306.service': [
+          `[Unit]`,
+          `Description=G2306 Node API Service`,
+          `After=network.target`,
+          ``,
+          `[Service]`,
+          `Type=simple`,
+          `User=${userSlug}`,
+          `WorkingDirectory=/usr/local/bin`,
+          `ExecStart=/usr/bin/node /usr/local/bin/g2306-node`,
+          `Restart=always`,
+          ``,
+          `[Install]`,
+          `WantedBy=multi-user.target`,
+        ],
+        '/proc/uptime': [`${Math.floor(Math.random()*864000 + 86400)}.00 ${Math.floor(Math.random()*400000)}.00`],
+        '/proc/version': [`Linux version 6.1.0-21-amd64 (debian-kernel@lists.debian.org) (gcc-12 12.2.0) #1 SMP PREEMPT_DYNAMIC`],
+        '/proc/meminfo': [
+          `MemTotal:        2048000 kB`,
+          `MemFree:          412800 kB`,
+          `MemAvailable:     819200 kB`,
+          `Buffers:           65536 kB`,
+          `Cached:           409600 kB`,
+        ],
+        '/var/log/nginx/access.log': [
+          `192.168.1.1 - - [${ts()}] "GET / HTTP/1.1" 200 1024`,
+          `10.0.0.2 - - [${ts()}] "GET /api/map/data HTTP/1.1" 200 4096`,
+          `185.220.101.32 - - [${ts()}] "GET /.env HTTP/1.1" 404 0`,
+        ],
+        '/var/log/nginx/error.log': [
+          `${ts()} [warn] 892#892: conflicting server name "g2306-node"`,
+        ],
+        '/var/www/html/index.html': [
+          `<!DOCTYPE html><html><head><title>G2306</title></head>`,
+          `<body><h1>G2306 Node</h1><p>Alumni Network Node</p></body></html>`,
+        ],
+        [`/home/${userSlug}/.profile`]: [
+          `# ~/.profile: executed by the command interpreter for login shells.`,
+          `if [ -n "$BASH_VERSION" ]; then`,
+          `  if [ -f "$HOME/.bashrc" ]; then . "$HOME/.bashrc"; fi`,
+          `fi`,
+          `export PATH="$HOME/bin:$HOME/.local/bin:$PATH"`,
+        ],
       };
 
       if (filePath === '/etc/g2306/.env') {
@@ -437,6 +534,13 @@ function initPortalTerminal(container, session) {
       // 判断路径是否是已知目录
       if (SERVER_FS[filePath]) {
         appendLine(`cat: ${arg}: Is a directory`, 'var(--hud-danger)');
+        return;
+      }
+
+      // 已知的二进制/不可读文件
+      const binDirs = ['/bin', '/usr/bin', '/lib', '/usr/local/bin', '/boot', '/dev'];
+      if (binDirs.some(d => filePath.startsWith(d + '/') || filePath === d)) {
+        appendLine(`cat: ${arg}: binary file, use strings(1) to inspect`, 'var(--hud-danger)');
         return;
       }
 

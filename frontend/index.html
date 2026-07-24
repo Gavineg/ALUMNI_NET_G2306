@@ -269,9 +269,9 @@
       const terminal = document.getElementById('terminal-content');
       const ctx = makeCtx();
       updateFsPrompt();
-      await biosAppend(terminal, [{ text: `${getPromptPrefix(localStorage.getItem('g2306_token'))}> ${cmd}` }]);
+      await biosAppend(terminal, [{ text: `${getPromptPrefix(localStorage.getItem('g2306_token'))}> ${cmd}` }], 10);
       const lines = await runCommand(cmd, ctx);
-      if (lines?.length) await biosAppend(terminal, lines);
+      if (lines?.length) await biosAppend(terminal, lines, 10);
       commandRunning = false;
       updateFsPrompt();
       updatePrompt();
@@ -373,7 +373,7 @@
 
         print: (lines) => {
           const terminal = document.getElementById('terminal-content');
-          return biosAppend(terminal, lines);
+          return biosAppend(terminal, lines, 10);
         }
       };
     }
@@ -493,9 +493,9 @@
       const terminal = document.getElementById('terminal-content');
       const ctx = makeCtx();
       openPanel();
-      await biosAppend(terminal, [{ text: `${getPromptPrefix(localStorage.getItem('g2306_token'))}> ${cmd}` }]);
+      await biosAppend(terminal, [{ text: `${getPromptPrefix(localStorage.getItem('g2306_token'))}> ${cmd}` }], 10);
       const lines = await runCommand(cmd, ctx);
-      if (lines?.length) await biosAppend(terminal, lines);
+      if (lines?.length) await biosAppend(terminal, lines, 10);
       commandRunning = false;
       updatePrompt();
       dosInput.focus();

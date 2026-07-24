@@ -67,7 +67,7 @@ function attachScrollTracker(terminal) {
   });
 }
 
-export async function biosAppend(terminal, lines) {
+export async function biosAppend(terminal, lines, speed = 1) {
   if (typingCtrl) typingCtrl.abort();
   typingCtrl = new AbortController();
   const { signal } = typingCtrl;
@@ -80,6 +80,10 @@ export async function biosAppend(terminal, lines) {
     });
   }
 
+  // speed=1: normal (map UI)  speed=10: fast (commands)  speed=100: instant
+  const charDelay = speed >= 100 ? 0 : speed >= 10 ? (1 + Math.random() * 3) : (16 + Math.random() * 22);
+  const lineDelay = speed >= 100 ? 0 : speed >= 10 ? (8 + Math.random() * 12) : (160 + Math.random() * 200);
+
   attachScrollTracker(terminal);
 
   for (const item of lines) {
@@ -88,13 +92,17 @@ export async function biosAppend(terminal, lines) {
     terminal.appendChild(div);
 
     if (!terminal._userScrolled) scrollToBottom(terminal);
-    await new Promise(r => requestAnimationFrame(r));
+    if (charDelay > 0) await new Promise(r => {
+      requestAnimationFrame(r);
+      signal.addEventListener('abort', r, { once: true });
+    });
+    if (signal.aborted) return;
 
     for (const char of item.text) {
       if (signal.aborted) return;
       div.textContent += char;
       if (!terminal._userScrolled) scrollToBottom(terminal);
-      await asleep(16 + Math.random() * 22);
+      await asleep(charDelay);
     }
 
     if (signal.aborted) return;
@@ -107,7 +115,7 @@ export async function biosAppend(terminal, lines) {
     }
 
     if (!terminal._userScrolled) scrollToBottom(terminal);
-    await asleep(160 + Math.random() * 200);
+    await asleep(lineDelay);
   }
 }
 
