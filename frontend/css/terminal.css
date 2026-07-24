@@ -39,6 +39,39 @@
 #reset-btn.visible { opacity: 1; visibility: visible; }
 #reset-btn:hover   { background: #fff; box-shadow: 0 0 14px #fff; }
 
+/* ── DOS 彩蛋输入框 ─────────────────────────────────── */
+#dos-input-wrap {
+  display: none; /* 默认隐藏，桌面端由 JS 打开 */
+  margin-top: 10px;
+  pointer-events: auto;
+  font-size: 12px;
+  letter-spacing: 0.5px;
+  color: var(--hud-primary);
+  border: 1px solid var(--hud-border);
+  background: rgba(6,10,15,0.55);
+  padding: 4px 8px;
+  max-width: 260px;
+}
+#dos-prompt {
+  color: var(--hud-text-dim);
+  margin-right: 6px;
+}
+#dos-input {
+  background: transparent;
+  border: none;
+  outline: none;
+  color: var(--hud-primary);
+  font-family: inherit;
+  font-size: 12px;
+  letter-spacing: 0.5px;
+  width: 190px;
+  text-shadow: 0 0 6px rgba(184,255,71,0.35);
+}
+#dos-input::placeholder {
+  color: var(--hud-text-dim);
+  opacity: 0.6;
+}
+
 /* ── 信息面板 ────────────────────────────────────────── */
 #info-panel {
   position: absolute;

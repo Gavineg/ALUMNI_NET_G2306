@@ -187,6 +187,22 @@ async function showStudentInfo(unis) {
   await safe([{ text: '> EOF', status: 'DONE' }]);
 }
 
+// ── 供彩蛋命令终端复用 ────────────────────────────────────────
+
+export function openPanel() {
+  document.getElementById('info-panel').classList.add('active');
+}
+
+export function clearTerminal() {
+  ++currentSession;
+  abortBios();
+  document.getElementById('terminal-content').innerHTML = '';
+}
+
+export function flyToCoord(lon, lat) {
+  chartRef?.setOption({ geo: { zoom: 6, center: [lon, lat] } });
+}
+
 // ── 关闭面板 ──────────────────────────────────────────────────
 
 export async function closePanel() {
