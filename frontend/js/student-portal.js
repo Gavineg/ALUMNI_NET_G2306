@@ -89,6 +89,12 @@ export async function initStudentPortal(container) {
         <input class="portal-terminal-input" id="pt-input" type="text"
                autocomplete="off" spellcheck="false" placeholder="enter command...">
       </div>
+      <!-- vim overlay -->
+      <div id="pt-vim" style="display:none;position:absolute;inset:0;background:var(--hud-bg);border:1px solid var(--hud-border);flex-direction:column;font-family:var(--font-mono);font-size:12px;z-index:10">
+        <div id="pt-vim-body" style="flex:1;overflow:auto;padding:8px 10px;white-space:pre;color:var(--hud-primary);text-transform:none;min-height:200px;cursor:text"></div>
+        <div id="pt-vim-status" style="background:var(--hud-border);color:var(--hud-bg);padding:2px 8px;font-size:11px;letter-spacing:1px;text-transform:none"></div>
+        <div id="pt-vim-cmd" style="padding:2px 8px;color:var(--hud-primary);font-size:11px;min-height:18px;text-transform:none"></div>
+      </div>
     </div>
   `;
 
@@ -605,45 +611,196 @@ function initPortalTerminal(container, session) {
       return;
     }
 
-    // vim / vi / nano
+    // vim / vi / nano — full modal editor for /etc/g2306/.env
     if (cmd === 'vim' || cmd === 'vi' || cmd === 'nano') {
-      if (!arg1) { appendLine(cmd + ': missing filename','var(--hud-danger)'); return; }
+      if (!arg1) { appendLine(cmd + ': missing filename', 'var(--hud-danger)'); return; }
       const fp = resolvePath(arg1);
-      if (fp !== '/etc/g2306/.env') { appendLine(cmd + ': ' + arg1 + ': permission denied','var(--hud-danger)'); return; }
+      if (fp !== '/etc/g2306/.env') { appendLine(cmd + ': ' + arg1 + ': permission denied', 'var(--hud-danger)'); return; }
       const tok = localStorage.getItem('g2306_token');
-      if (!tok) { appendLine('permission denied: not authenticated','var(--hud-danger)'); return; }
+      if (!tok) { appendLine('permission denied: not authenticated', 'var(--hud-danger)'); return; }
+
+      // Fetch current values
       let d = {};
-      try { const r = await fetch(API_BASE + '/api/student/me',{headers:{Authorization:'Bearer ' + tok}}); if(r.ok) d=await r.json(); } catch {}
-      appendLine('"/etc/g2306/.env"  -- INSERT --');
-      appendLine('SERVER_HOSTNAME=' + (d.server_hostname||''));
-      appendLine('SERVER_PORTS=' + (d.server_ports||'22,80'));
-      appendLine('SERVER_DIFFICULTY=' + (d.server_difficulty||2));
-      appendLine('SERVER_THEME=' + (d.server_theme||'DEFAULT'));
-      appendLine('HACK_LOOT=' + (d.hack_loot ? '"' + d.hack_loot.slice(0,60) + '"' : ''));
-      appendLine('');
-      const userInput = await new Promise(resolve => {
-        appendLine(':'); pendingResolve = { resolve, mask: false, label: ':' };
-        maskValue = ''; input.value = ''; input.focus();
-      });
-      if (!userInput) { appendLine('"[No Write Since Last Change]"'); return; }
-      const vc = userInput.trim().toLowerCase();
-      if (vc === 'q' || vc === 'q!') { appendLine('"[File not saved]"'); return; }
-      if (!vc.startsWith('w')) { appendLine('E492: Not an editor command: ' + userInput,'var(--hud-danger)'); return; }
-      const raw2 = userInput.replace(/^wq?/i,'').trim();
-      const payload = {};
-      const fm = {SERVER_HOSTNAME:'server_hostname',SERVER_PORTS:'server_ports',SERVER_DIFFICULTY:'server_difficulty',SERVER_THEME:'server_theme',HACK_LOOT:'hack_loot'};
-      for (const part of raw2.split(/\s+/)) {
-        const eqIdx = part.indexOf('=');
-        if (eqIdx < 0) continue;
-        const k = part.slice(0, eqIdx).toUpperCase();
-        const v = part.slice(eqIdx+1).replace(/^"|"$/g,'');
-        if (fm[k]) payload[fm[k]] = k === 'SERVER_DIFFICULTY' ? Math.min(5,Math.max(1,parseInt(v)||2)) : v;
+      try { const r = await fetch(API_BASE + '/api/student/me', {headers:{Authorization:'Bearer ' + tok}}); if(r.ok) d = await r.json(); } catch {}
+
+      const fields = [
+        'SERVER_HOSTNAME=' + (d.server_hostname || ''),
+        'SERVER_PORTS=' + (d.server_ports || '22,80'),
+        'SERVER_DIFFICULTY=' + (d.server_difficulty || 2),
+        'SERVER_THEME=' + (d.server_theme || 'DEFAULT'),
+        'HACK_LOOT=' + (d.hack_loot || ''),
+      ];
+
+      // Open vim overlay
+      const vimEl   = container.querySelector('#pt-vim');
+      const bodyEl  = container.querySelector('#pt-vim-body');
+      const statusEl= container.querySelector('#pt-vim-status');
+      const cmdEl   = container.querySelector('#pt-vim-cmd');
+
+      vimEl.style.display = 'flex';
+
+      // Editor state
+      let lines = [...fields];
+      let cursorRow = 0, cursorCol = 0;
+      let mode = 'normal'; // 'normal' | 'insert' | 'command'
+      let cmdBuf = '';
+      let modified = false;
+
+      const FILENAME = '/etc/g2306/.env';
+
+      function clamp(v, lo, hi) { return Math.max(lo, Math.min(hi, v)); }
+
+      function renderBody() {
+        let html = '';
+        for (let r = 0; r < lines.length; r++) {
+          const lineNum = String(r + 1).padStart(3, ' ');
+          const lineContent = lines[r];
+          if (r === cursorRow && mode !== 'command') {
+            const col = clamp(cursorCol, 0, lineContent.length);
+            const before = escHtml(lineContent.slice(0, col));
+            const cursor = escHtml(lineContent[col] || ' ');
+            const after  = escHtml(lineContent.slice(col + 1));
+            html += '<span style="color:var(--hud-text-dim)">' + lineNum + ' </span>'
+                  + before
+                  + '<span style="background:var(--hud-primary);color:var(--hud-bg)">' + cursor + '</span>'
+                  + after + '\n';
+          } else {
+            html += '<span style="color:var(--hud-text-dim)">' + lineNum + ' </span>' + escHtml(lineContent) + '\n';
+          }
+        }
+        // Tilde lines (empty lines below content, like real vim)
+        for (let i = 0; i < 3; i++) {
+          html += '<span style="color:var(--hud-text-dim)">  ~ </span>\n';
+        }
+        bodyEl.innerHTML = html;
       }
-      if (!Object.keys(payload).length) { appendLine('"[No changes to write]"'); return; }
+
+      function escHtml(s) {
+        return String(s).replace(/&/g,'&amp;').replace(/</g,'&lt;').replace(/>/g,'&gt;');
+      }
+
+      function renderStatus() {
+        const modeLabel = mode === 'insert' ? '-- INSERT --' : mode === 'command' ? ':' : '';
+        const pos = (cursorRow + 1) + ',' + (cursorCol + 1);
+        statusEl.textContent = FILENAME + (modified ? ' [+]' : '') + '  ' + modeLabel.padEnd(14) + pos.padStart(10);
+        cmdEl.textContent = mode === 'command' ? ':' + cmdBuf : '';
+      }
+
+      function render() { renderBody(); renderStatus(); }
+      render();
+
+      // Result promise
+      const result = await new Promise(resolve => {
+        function onKey(e) {
+          // Always prevent default to stop terminal input from capturing keys
+          e.stopPropagation();
+
+          if (mode === 'normal') {
+            e.preventDefault();
+            const k = e.key;
+            if (k === 'i') { mode = 'insert'; render(); return; }
+            if (k === 'a') { mode = 'insert'; cursorCol = Math.min(cursorCol + 1, lines[cursorRow].length); render(); return; }
+            if (k === 'A') { mode = 'insert'; cursorCol = lines[cursorRow].length; render(); return; }
+            if (k === 'I') { mode = 'insert'; cursorCol = 0; render(); return; }
+            if (k === 'o') { lines.splice(cursorRow + 1, 0, ''); cursorRow++; cursorCol = 0; mode = 'insert'; modified = true; render(); return; }
+            if (k === 'O') { lines.splice(cursorRow, 0, ''); cursorCol = 0; mode = 'insert'; modified = true; render(); return; }
+            if (k === 'ArrowUp'   || k === 'k') { cursorRow = clamp(cursorRow - 1, 0, lines.length - 1); cursorCol = clamp(cursorCol, 0, lines[cursorRow].length); render(); return; }
+            if (k === 'ArrowDown' || k === 'j') { cursorRow = clamp(cursorRow + 1, 0, lines.length - 1); cursorCol = clamp(cursorCol, 0, lines[cursorRow].length); render(); return; }
+            if (k === 'ArrowLeft' || k === 'h') { cursorCol = clamp(cursorCol - 1, 0, lines[cursorRow].length); render(); return; }
+            if (k === 'ArrowRight'|| k === 'l') { cursorCol = clamp(cursorCol + 1, 0, lines[cursorRow].length); render(); return; }
+            if (k === '0') { cursorCol = 0; render(); return; }
+            if (k === '$') { cursorCol = Math.max(0, lines[cursorRow].length - 1); render(); return; }
+            if (k === 'g') { cursorRow = 0; cursorCol = 0; render(); return; }
+            if (k === 'G') { cursorRow = lines.length - 1; cursorCol = 0; render(); return; }
+            if (k === 'x') { const l = lines[cursorRow]; if (cursorCol < l.length) { lines[cursorRow] = l.slice(0,cursorCol) + l.slice(cursorCol+1); modified = true; } render(); return; }
+            if (k === 'd' && e.ctrlKey) { cursorRow = clamp(cursorRow + 10, 0, lines.length-1); render(); return; }
+            if (k === 'u' && e.ctrlKey) { cursorRow = clamp(cursorRow - 10, 0, lines.length-1); render(); return; }
+            if (k === ':') { mode = 'command'; cmdBuf = ''; render(); return; }
+            if (k === 'Escape') { render(); return; }
+            return;
+          }
+
+          if (mode === 'insert') {
+            if (k === 'Escape') { mode = 'normal'; cursorCol = Math.max(0, cursorCol - 1); render(); return; }
+            e.preventDefault();
+            if (k === 'ArrowUp')    { cursorRow = clamp(cursorRow-1,0,lines.length-1); render(); return; }
+            if (k === 'ArrowDown')  { cursorRow = clamp(cursorRow+1,0,lines.length-1); render(); return; }
+            if (k === 'ArrowLeft')  { cursorCol = clamp(cursorCol-1,0,lines[cursorRow].length); render(); return; }
+            if (k === 'ArrowRight') { cursorCol = clamp(cursorCol+1,0,lines[cursorRow].length); render(); return; }
+            if (k === 'Home') { cursorCol = 0; render(); return; }
+            if (k === 'End')  { cursorCol = lines[cursorRow].length; render(); return; }
+            if (k === 'Enter') {
+              const l = lines[cursorRow];
+              lines[cursorRow] = l.slice(0, cursorCol);
+              lines.splice(cursorRow + 1, 0, l.slice(cursorCol));
+              cursorRow++; cursorCol = 0; modified = true; render(); return;
+            }
+            if (k === 'Backspace') {
+              const l = lines[cursorRow];
+              if (cursorCol > 0) { lines[cursorRow] = l.slice(0,cursorCol-1) + l.slice(cursorCol); cursorCol--; modified = true; }
+              else if (cursorRow > 0) { const prev = lines[cursorRow-1]; cursorCol = prev.length; lines[cursorRow-1] = prev + l; lines.splice(cursorRow,1); cursorRow--; modified = true; }
+              render(); return;
+            }
+            if (k === 'Delete') {
+              const l = lines[cursorRow];
+              if (cursorCol < l.length) { lines[cursorRow] = l.slice(0,cursorCol) + l.slice(cursorCol+1); modified = true; }
+              else if (cursorRow < lines.length-1) { lines[cursorRow] = l + lines[cursorRow+1]; lines.splice(cursorRow+1,1); modified = true; }
+              render(); return;
+            }
+            if (k === 'Tab') { lines[cursorRow] = lines[cursorRow].slice(0,cursorCol) + '  ' + lines[cursorRow].slice(cursorCol); cursorCol += 2; modified = true; render(); return; }
+            if (k.length === 1) {
+              const l = lines[cursorRow];
+              lines[cursorRow] = l.slice(0, cursorCol) + k + l.slice(cursorCol);
+              cursorCol++; modified = true; render(); return;
+            }
+            return;
+          }
+
+          if (mode === 'command') {
+            e.preventDefault();
+            if (k === 'Escape') { mode = 'normal'; cmdBuf = ''; render(); return; }
+            if (k === 'Backspace') { cmdBuf = cmdBuf.slice(0,-1); render(); return; }
+            if (k === 'Enter') {
+              const c = cmdBuf.trim();
+              if (c === 'q!') { vimEl.style.display = 'none'; document.removeEventListener('keydown', onKey, true); resolve(null); return; }
+              if (c === 'q' && !modified) { vimEl.style.display = 'none'; document.removeEventListener('keydown', onKey, true); resolve(null); return; }
+              if (c === 'q' && modified) { cmdEl.textContent = 'E37: No write since last change (add ! to override)'; mode = 'normal'; cmdBuf = ''; setTimeout(render, 1500); return; }
+              if (c === 'w' || c === 'wq' || c === 'x') {
+                vimEl.style.display = 'none';
+                document.removeEventListener('keydown', onKey, true);
+                resolve(lines);
+                return;
+              }
+              cmdEl.textContent = 'E492: Not an editor command: ' + c;
+              mode = 'normal'; cmdBuf = ''; setTimeout(render, 1500);
+              return;
+            }
+            if (k.length === 1) { cmdBuf += k; render(); }
+            return;
+          }
+        }
+
+        document.addEventListener('keydown', onKey, true);
+        vimEl.focus && vimEl.focus();
+      });
+
+      if (!result) { appendLine(FILENAME + ' unchanged'); return; }
+
+      // Parse lines back into payload
+      const fm = {SERVER_HOSTNAME:'server_hostname', SERVER_PORTS:'server_ports', SERVER_DIFFICULTY:'server_difficulty', SERVER_THEME:'server_theme', HACK_LOOT:'hack_loot'};
+      const payload = {};
+      for (const line of result) {
+        const eq = line.indexOf('=');
+        if (eq < 0) continue;
+        const k = line.slice(0, eq).trim().toUpperCase();
+        const v = line.slice(eq + 1).trim().replace(/^"|"$/g, '');
+        if (fm[k]) payload[fm[k]] = k === 'SERVER_DIFFICULTY' ? Math.min(5, Math.max(1, parseInt(v) || 2)) : v;
+      }
+      if (!Object.keys(payload).length) { appendLine('"' + FILENAME + '" unchanged'); return; }
       try {
-        const res = await fetch(API_BASE + '/api/student/me',{method:'PUT',headers:{'Content-Type':'application/json',Authorization:'Bearer ' + tok},body:JSON.stringify(payload)});
-        appendLine(res.ok ? '"/etc/g2306/.env" written' : 'write failed','var(--hud-danger)');
-      } catch { appendLine('write failed: connection error','var(--hud-danger)'); }
+        const res = await fetch(API_BASE + '/api/student/me', {method:'PUT', headers:{'Content-Type':'application/json', Authorization:'Bearer ' + tok}, body:JSON.stringify(payload)});
+        appendLine(res.ok ? '"' + FILENAME + '" written, ' + Object.keys(payload).length + ' field(s) saved' : 'write failed: server error', res.ok ? undefined : 'var(--hud-danger)');
+      } catch { appendLine('write failed: connection error', 'var(--hud-danger)'); }
       return;
     }
 
