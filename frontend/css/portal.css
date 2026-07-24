@@ -176,6 +176,7 @@ body.portal-body {
 #portal-panel {
   width: 100%;
   max-width: 860px;
+  margin: 0 auto;
 }
 
 .panel-title {
