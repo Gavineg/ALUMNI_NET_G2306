@@ -6,7 +6,19 @@ import { API_BASE } from './config.js';
  */
 const CLUSTER_DEG = 1.8; // 经纬度距离阈值，约 300km
 
+const MAP_CACHE_KEY = 'g2306_map_cache';
+const MAP_CACHE_TTL = 60 * 1000; // 60秒内复用缓存
+
 export async function fetchMapData() {
+  // 优先用 sessionStorage 缓存，避免每次刷新都打 Firestore
+  try {
+    const cached = sessionStorage.getItem(MAP_CACHE_KEY);
+    if (cached) {
+      const { ts, data: d } = JSON.parse(cached);
+      if (Date.now() - ts < MAP_CACHE_TTL) return buildMapResult(d);
+    }
+  } catch {}
+
   const controller = new AbortController();
   const timer = setTimeout(() => controller.abort(), 3000);
 
@@ -14,6 +26,12 @@ export async function fetchMapData() {
   clearTimeout(timer);
   const data = await res.json();
 
+  try { sessionStorage.setItem(MAP_CACHE_KEY, JSON.stringify({ ts: Date.now(), data })); } catch {}
+
+  return buildMapResult(data);
+}
+
+function buildMapResult(data) {
   const { origin, universities, colorMode, unifiedColor } = data;
   const originCoords = [origin.longitude, origin.latitude];
 

@@ -52,9 +52,13 @@ export async function typeWrite(el, text, speed = 55) {
  */
 let typingCtrl = null;
 
-function scrollToBottom(terminal) {
-  // Use requestAnimationFrame to scroll after the DOM has painted
-  requestAnimationFrame(() => { terminal.scrollTop = terminal.scrollHeight; });
+function scheduleScroll(terminal) {
+  if (terminal._scrollPending) return;
+  terminal._scrollPending = true;
+  requestAnimationFrame(() => {
+    terminal._scrollPending = false;
+    terminal.scrollTop = terminal.scrollHeight;
+  });
 }
 
 function attachScrollTracker(terminal) {
@@ -80,9 +84,9 @@ export async function biosAppend(terminal, lines, speed = 45) {
     });
   }
 
-  // speed=1: normal (map UI)  speed=10: fast (commands)  speed=100: instant
-  const charDelay = speed >= 100 ? 0 : speed >= 10 ? (1 + Math.random() * 3) : (16 + Math.random() * 22);
-  const lineDelay = speed >= 100 ? 0 : speed >= 10 ? (8 + Math.random() * 12) : (160 + Math.random() * 200);
+  // 取整避免浮点 setTimeout 抖动；speed>=100 直接 0
+  const charDelay = speed >= 100 ? 0 : speed >= 10 ? Math.round(1 + Math.random() * 3) : Math.round(16 + Math.random() * 22);
+  const lineDelay = speed >= 100 ? 0 : speed >= 10 ? Math.round(8 + Math.random() * 12) : Math.round(160 + Math.random() * 200);
 
   attachScrollTracker(terminal);
 
@@ -91,19 +95,15 @@ export async function biosAppend(terminal, lines, speed = 45) {
     const div = document.createElement('div');
     terminal.appendChild(div);
 
-    if (!terminal._userScrolled) scrollToBottom(terminal);
-    if (charDelay > 0) await new Promise(r => {
-      requestAnimationFrame(r);
-      signal.addEventListener('abort', r, { once: true });
-    });
-    if (signal.aborted) return;
+    if (!terminal._userScrolled) scheduleScroll(terminal);
 
     for (const char of item.text) {
       if (signal.aborted) return;
       div.textContent += char;
-      if (!terminal._userScrolled) scrollToBottom(terminal);
-      await asleep(charDelay);
+      if (charDelay > 0) await asleep(charDelay);
     }
+
+    if (!terminal._userScrolled) scheduleScroll(terminal);
 
     if (signal.aborted) return;
 
@@ -114,7 +114,7 @@ export async function biosAppend(terminal, lines, speed = 45) {
       div.appendChild(span);
     }
 
-    if (!terminal._userScrolled) scrollToBottom(terminal);
+    if (!terminal._userScrolled) scheduleScroll(terminal);
     await asleep(lineDelay);
   }
 }
