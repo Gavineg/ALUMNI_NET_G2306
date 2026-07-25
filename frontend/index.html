@@ -123,7 +123,8 @@
         lineAnim:   mapData.lineAnim
       });
 
-      await sleep(FLIGHT_TIME + 200);
+      // rotary 模式：出发点 ripple 稍作停顿后直接进入雷达，无需等飞行粒子
+      await sleep(mapData.lineAnim === 'rotary' ? 800 : FLIGHT_TIME + 200);
 
       // 解锁地图
       chart.setOption({ geo: { roam: true } });
@@ -146,10 +147,11 @@
 
       initMapUI(chart, initZoom, initCenter);
 
-      // 打字期间暂停 pulse-lines 动画，减少主线程竞争
+      // 打字期间暂停 pulse-lines 动画，减少主线程竞争（仅 comet 模式有 pulse-lines）
+      const hasPulse = mapData.lineAnim === 'comet';
       setTypingHooks(
         () => chart.setOption({ series: [{ id: 'pulse-lines', effect: { show: false } }] }),
-        () => chart.setOption({ series: [{ id: 'pulse-lines', effect: { show: true } }] })
+        () => hasPulse && chart.setOption({ series: [{ id: 'pulse-lines', effect: { show: true } }] })
       );
 
       // 重置按钮：打字出现

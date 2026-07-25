@@ -114,18 +114,13 @@ function _doLineAnim(chart, linesData, flightTime, style) {
     ]});
 
   } else if (style === 'rotary') {
-    // 旋转雷达飞入：可见连线 + 扫描感涟漪
+    // 旋转雷达模式：飞行阶段只做出发点大涟漪，不飞粒子
+    // 连线和节点完全由 startRadarSweep 接管
     chart.setOption({ series: [
-      { id:'comet1', type:'lines', coordinateSystem:'geo', zlevel:2,
-        effect:{ show:true, period:p*0.65, trailLength:0.3, color:'#b8ff47', symbolSize:5 },
-        lineStyle:{ color:'rgba(184,255,71,0.22)', width:1.5, curveness:0.08 }, data:linesData },
-      { id:'comet2', type:'lines', coordinateSystem:'geo', zlevel:2,
-        effect:{ show:true, period:p*0.95, trailLength:0.5, color:'#00ffcc', symbolSize:2, delay:150 },
-        lineStyle:{ color:'rgba(0,0,0,0)', width:0, curveness:0.08 }, data:linesData },
       { id:'comet3', type:'effectScatter', coordinateSystem:'geo', zlevel:1,
-        symbol:'circle', symbolSize:12,
+        symbol:'circle', symbolSize:14,
         data:[{ name:'ORIGIN', value:linesData[0]?.coords[0]||[] }],
-        showEffectOn:'render', rippleEffect:{ brushType:'stroke', scale:18, period:1.0 },
+        showEffectOn:'render', rippleEffect:{ brushType:'stroke', scale:20, period:0.8 },
         itemStyle:{ color:'rgba(0,255,204,0.0)' }, label:{ show:false } },
     ]});
 
@@ -151,14 +146,15 @@ function _doLineAnim(chart, linesData, flightTime, style) {
 export async function revealTargets(chart, scatterData, linesData, colorMode, opts = {}) {
   const { nodeAnim = 'expand', lineAnim = 'comet' } = opts;
 
-  // 完全清除所有飞行粒子系列：effect关掉 + lineStyle清零 + 数据清空
+  // 完全清除所有飞行粒子系列（comet1-6 可能是 lines 或 effectScatter 类型）
+  // data:[] 同时适用两种类型，彻底清空数据和 effect
   chart.setOption({ series: [
-    { id:'comet1', effect:{ show:false }, lineStyle:{ width:0, opacity:0 }, data:[] },
-    { id:'comet2', effect:{ show:false }, lineStyle:{ width:0, opacity:0 }, data:[] },
-    { id:'comet3', effect:{ show:false }, lineStyle:{ width:0, opacity:0 }, data:[] },
-    { id:'comet4', effect:{ show:false }, lineStyle:{ width:0, opacity:0 }, data:[] },
-    { id:'comet5', effect:{ show:false }, lineStyle:{ width:0, opacity:0 }, data:[] },
-    { id:'comet6', effect:{ show:false }, lineStyle:{ width:0, opacity:0 }, data:[] },
+    { id:'comet1', data:[], effect:{ show:false }, lineStyle:{ width:0, opacity:0 } },
+    { id:'comet2', data:[], effect:{ show:false }, lineStyle:{ width:0, opacity:0 } },
+    { id:'comet3', data:[], effect:{ show:false }, lineStyle:{ width:0, opacity:0 } },
+    { id:'comet4', data:[], effect:{ show:false }, lineStyle:{ width:0, opacity:0 } },
+    { id:'comet5', data:[], effect:{ show:false }, lineStyle:{ width:0, opacity:0 } },
+    { id:'comet6', data:[], effect:{ show:false }, lineStyle:{ width:0, opacity:0 } },
   ]});
 
   // 静态底线（comet模式保留微弱脉冲，其他模式纯静态）
@@ -187,6 +183,8 @@ export async function revealTargets(chart, scatterData, linesData, colorMode, op
   if (nodeAnim === 'flicker')   return _animFlicker(chart, nodeInfos);
   if (nodeAnim === 'glitch')    return _animGlitch(chart, nodeInfos);
   if (nodeAnim === 'cascade')   return _animCascade(chart, nodeInfos);
+  // rotary: 节点初始化为 dim 状态，由 startRadarSweep 管理亮度
+  if (lineAnim === 'rotary')    return _registerNodes(chart, nodeInfos, 0, 0.08);
   return _animExpand(chart, nodeInfos); // default: expand
 }
 
