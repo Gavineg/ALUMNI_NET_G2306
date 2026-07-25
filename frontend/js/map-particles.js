@@ -139,6 +139,27 @@ function _doLineAnim(chart, linesData, flightTime, style) {
   }
 }
 
+// per-mode static line style after reveal
+function _staticLineStyle(mode) {
+  switch (mode) {
+    case 'laser':
+      return { line:{ color:'rgba(184,255,71,0.45)', width:1.5, curveness:0, opacity:1 } };
+    case 'matrix':
+      return { line:{ color:'rgba(0,255,65,0.35)',   width:1,   curveness:0.15, opacity:1 } };
+    case 'ghost':
+      return { line:{ color:'rgba(0,255,204,0.22)',  width:1,   curveness:0.28, opacity:1 } };
+    case 'pulse':
+      return { line:{ color:'rgba(184,255,71,0.38)', width:1,   curveness:0.18, opacity:1 } };
+    case 'radar':
+      return { line:{ color:'rgba(184,255,71,0.30)', width:1,   curveness:0.10, opacity:1 } };
+    case 'rotary':
+      return { line:{ color:'rgba(0,0,0,0)',         width:0,   curveness:0.08, opacity:0 } };
+    default: // comet
+      return { line:{ color:'rgba(184,255,71,0.18)', width:1,   curveness:0.22, opacity:1, type:[5,9] } };
+  }
+}
+
+
 /**
  * 粒子落地后：静态底线 + 逐个亮起目标节点
  * arrivalDelay: 粒子飞行结束到第一个节点显示的额外等待（ms），默认0
@@ -157,11 +178,12 @@ export async function revealTargets(chart, scatterData, linesData, colorMode, op
     { id:'comet6', data:[], effect:{ show:false }, lineStyle:{ width:0, opacity:0 } },
   ]});
 
-  // 静态底线（comet模式保留微弱脉冲，其他模式纯静态）
+  // 静态底线：各模式保留对应风格的连线
+  const staticStyle = _staticLineStyle(lineAnim);
   chart.setOption({
     series: [
       { id:'static-lines', type:'lines', coordinateSystem:'geo', zlevel:0,
-        lineStyle:{ color:'rgba(184,255,71,0.18)', width:1, curveness:0.22, type:[5,9] }, data:linesData },
+        lineStyle: staticStyle.line, data:linesData },
       { id:'pulse-lines', type:'lines', coordinateSystem:'geo', zlevel:1,
         effect:{ show: lineAnim === 'comet',
                  period:1.4, trailLength:0.2, color:'rgba(184,255,71,0.5)', symbolSize:2 },
