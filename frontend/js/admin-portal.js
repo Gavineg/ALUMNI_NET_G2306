@@ -373,6 +373,7 @@ async function renderSettings(content) {
             <option value="radar"  ${(settings.lineAnim||'')==='radar'  ?'selected':''}>RADAR — 雷达扫描</option>
             <option value="ghost"  ${(settings.lineAnim||'')==='ghost'  ?'selected':''}>GHOST — 鬼影数据包</option>
             <option value="matrix" ${(settings.lineAnim||'')==='matrix' ?'selected':''}>MATRIX — 矩阵数字流</option>
+            <option value="rotary" ${(settings.lineAnim||'')==='rotary' ?'selected':''}>ROTARY — 旋转雷达扫描</option>
           </select>
         </div>
         <div class="field-group">

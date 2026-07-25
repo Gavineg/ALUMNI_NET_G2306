@@ -43,7 +43,7 @@
     import { FLIGHT_TIME, NODE_DELAY } from './js/config.js';
     import { glitchResolve, typeWrite, sleep, abortBios, setTypingHooks } from './js/boot.js';
     import { fetchMapData } from './js/map-data.js';
-    import { launchParticles, revealTargets, startNoiseLayer } from './js/map-particles.js';
+    import { launchParticles, revealTargets, startNoiseLayer, startRadarSweep } from './js/map-particles.js';
     import { initMapUI, closePanel, openPanel, clearTerminal, flyToCoord, handleCloseBtn } from './js/map-ui.js';
     import { runCommand, restoreTheme, getPromptPrefix, isUnlocked, BASIC_CMDS, ADVANCED_CMDS } from './js/terminal-cmd-basic.js';
     import { biosAppend } from './js/boot.js';
@@ -135,6 +135,10 @@
       await revealTargets(chart, mapData.scatterData, mapData.linesData, mapData.colorMode, {
         nodeAnim: mapData.nodeAnim
       });
+
+      if (mapData.lineAnim === 'rotary') {
+        startRadarSweep(chart, mapData.originCoords, mapData.scatterData);
+      }
 
       subEl.textContent = '';
       await typeWrite(subEl, 'ALL TARGETS LOCKED. SYSTEM READY.', 12);

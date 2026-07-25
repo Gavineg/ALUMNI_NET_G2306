@@ -113,6 +113,22 @@ function _doLineAnim(chart, linesData, flightTime, style) {
         itemStyle:{ color:'rgba(0,255,204,0.0)' }, label:{ show:false } },
     ]});
 
+  } else if (style === 'rotary') {
+    // 旋转雷达飞入：可见连线 + 扫描感涟漪
+    chart.setOption({ series: [
+      { id:'comet1', type:'lines', coordinateSystem:'geo', zlevel:2,
+        effect:{ show:true, period:p*0.65, trailLength:0.3, color:'#b8ff47', symbolSize:5 },
+        lineStyle:{ color:'rgba(184,255,71,0.22)', width:1.5, curveness:0.08 }, data:linesData },
+      { id:'comet2', type:'lines', coordinateSystem:'geo', zlevel:2,
+        effect:{ show:true, period:p*0.95, trailLength:0.5, color:'#00ffcc', symbolSize:2, delay:150 },
+        lineStyle:{ color:'rgba(0,0,0,0)', width:0, curveness:0.08 }, data:linesData },
+      { id:'comet3', type:'effectScatter', coordinateSystem:'geo', zlevel:1,
+        symbol:'circle', symbolSize:12,
+        data:[{ name:'ORIGIN', value:linesData[0]?.coords[0]||[] }],
+        showEffectOn:'render', rippleEffect:{ brushType:'stroke', scale:18, period:1.0 },
+        itemStyle:{ color:'rgba(0,255,204,0.0)' }, label:{ show:false } },
+    ]});
+
   } else {
     // comet（默认）：三层彗星
     const layers = [
@@ -134,6 +150,16 @@ function _doLineAnim(chart, linesData, flightTime, style) {
  */
 export async function revealTargets(chart, scatterData, linesData, colorMode, opts = {}) {
   const { nodeAnim = 'expand' } = opts;
+
+  // 清除所有飞行粒子系列（comet/pulse/laser/ghost/matrix/radar 飞行阶段）
+  chart.setOption({ series: [
+    { id:'comet1', effect:{ show:false } },
+    { id:'comet2', effect:{ show:false } },
+    { id:'comet3', effect:{ show:false } },
+    { id:'comet4', effect:{ show:false } },
+    { id:'comet5', effect:{ show:false } },
+    { id:'comet6', effect:{ show:false } },
+  ]});
 
   // 静态虚线底层
   chart.setOption({
@@ -315,6 +341,120 @@ async function _animCascade(chart, nodeInfos) {
       data:[{ name:node.name, value:node.value,
         itemStyle:{ color:node.nodeColor, opacity:op, shadowBlur:op*14, shadowColor:node.nodeColor } }] };
   }, resolve));
+}
+
+/**
+ * 旋转雷达扫描 — 在节点显示后持续运行
+ * 扫描线从深圳出发点旋转，扫到节点瞬间最亮，然后慢慢变暗
+ */
+export function startRadarSweep(chart, originCoords, scatterData) {
+  const container = chart.getDom();
+  const cvs = document.createElement('canvas');
+  cvs.style.cssText = 'position:absolute;top:0;left:0;pointer-events:none;z-index:5;';
+  cvs.width  = container.offsetWidth;
+  cvs.height = container.offsetHeight;
+  if (getComputedStyle(container).position === 'static') container.style.position = 'relative';
+  container.appendChild(cvs);
+  const ctx = cvs.getContext('2d');
+
+  const nodeInfos = scatterData.map(node => {
+    const cluster = node.value[2];
+    const mc = cluster.universities
+      ? cluster.universities.reduce((s, u) => s + (u.members?.length || 0), 0)
+      : (cluster.members?.length || 1);
+    return { node, finalSize: Math.min(7 + mc * 2, 12) };
+  });
+
+  const brightness = new Float32Array(nodeInfos.length).fill(0);
+  const HIT_THRESH = 0.07; // radians — how close scan line needs to be to "hit" a node
+  const RPM = 5;
+  const RAD_PER_MS = (RPM / 60) * 2 * Math.PI / 1000;
+  const TRAIL = 0.55; // radians of the glowing tail
+  let angle = -Math.PI / 2; // start pointing north
+  let prev = performance.now();
+  let rafId;
+
+  const onResize = () => {
+    cvs.width  = container.offsetWidth;
+    cvs.height = container.offsetHeight;
+  };
+  window.addEventListener('resize', onResize);
+
+  function frame(now) {
+    const dt = Math.min(now - prev, 100); prev = now;
+    angle = (angle + RAD_PER_MS * dt) % (2 * Math.PI);
+
+    const [ox, oy] = chart.convertToPixel('geo', originCoords);
+    const w = cvs.width, h = cvs.height;
+    ctx.clearRect(0, 0, w, h);
+
+    const R = Math.max(w, h) * 1.5;
+    ctx.save();
+    ctx.translate(ox, oy);
+
+    // sweep tail: filled sector fading from transparent to bright
+    const steps = 24;
+    for (let i = 0; i < steps; i++) {
+      const a0 = angle - TRAIL * (i + 1) / steps;
+      const a1 = angle - TRAIL * i / steps;
+      const alpha = 0.18 * (i / steps) * (i / steps);
+      ctx.beginPath();
+      ctx.moveTo(0, 0);
+      ctx.arc(0, 0, R, a0, a1, false);
+      ctx.closePath();
+      ctx.fillStyle = `rgba(184,255,71,${alpha.toFixed(3)})`;
+      ctx.fill();
+    }
+
+    // sweep line
+    ctx.beginPath();
+    ctx.moveTo(0, 0);
+    ctx.lineTo(R * Math.cos(angle), R * Math.sin(angle));
+    ctx.strokeStyle = 'rgba(184,255,71,0.85)';
+    ctx.lineWidth = 1.5;
+    ctx.shadowBlur = 10;
+    ctx.shadowColor = '#b8ff47';
+    ctx.stroke();
+    ctx.restore();
+
+    // update node brightness
+    let anyChange = false;
+    nodeInfos.forEach(({ node }, idx) => {
+      const [px, py] = chart.convertToPixel('geo', [node.value[0], node.value[1]]);
+      const nodeAngle = Math.atan2(py - oy, px - ox);
+      let diff = ((nodeAngle - angle) % (2 * Math.PI) + 2 * Math.PI) % (2 * Math.PI);
+      if (diff > Math.PI) diff -= 2 * Math.PI;
+      const prev_b = brightness[idx];
+      if (Math.abs(diff) < HIT_THRESH) {
+        brightness[idx] = 1;
+      } else {
+        brightness[idx] = Math.max(0.1, brightness[idx] * 0.985);
+      }
+      if (Math.abs(brightness[idx] - prev_b) > 0.005) anyChange = true;
+    });
+
+    if (anyChange) {
+      chart.setOption({ series: nodeInfos.map(({ node, finalSize }, idx) => {
+        const b = brightness[idx];
+        return {
+          id: `target-${idx}`,
+          symbolSize: finalSize * (0.65 + 0.35 * b),
+          data: [{ name: node.name, value: node.value,
+            itemStyle: { color: node.nodeColor, opacity: 0.25 + 0.75 * b,
+              shadowBlur: b * 22, shadowColor: '#b8ff47' } }]
+        };
+      })});
+    }
+
+    rafId = requestAnimationFrame(frame);
+  }
+  rafId = requestAnimationFrame(frame);
+
+  return () => {
+    cancelAnimationFrame(rafId);
+    window.removeEventListener('resize', onResize);
+    cvs.remove();
+  };
 }
 
 /**
