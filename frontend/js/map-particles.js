@@ -113,59 +113,62 @@ export async function revealTargets(chart, scatterData, linesData, colorMode) {
     const memberCount = cluster.universities
       ? cluster.universities.reduce((s, u) => s + (u.members?.length || 0), 0)
       : (cluster.members?.length || 1);
-    return { node, size: Math.min(7 + memberCount * 2, 12) };
+    return { node, finalSize: Math.min(7 + memberCount * 2, 12) };
   });
 
-  // 第一步：所有节点以 scatter + opacity:0 注册（不触发 effectScatter 的闪现）
+  // 注册所有节点：effectScatter size=0 opacity=0，涟漪与节点同时从零开始
   chart.setOption({
-    series: nodeInfos.map(({ node, size }, idx) => ({
-      id: `target-${idx}`,
-      type: 'scatter',
-      coordinateSystem: 'geo',
-      zlevel: 3,
-      symbol: 'circle',
-      symbolSize: size,
-      animation: false,
-      data: [{ name: node.name, value: node.value,
-        itemStyle: { color: node.nodeColor, opacity: 0, shadowBlur: 0 } }],
-      label: { show: false },
-    }))
-  });
-
-  // 第二步：逐批淡入（scatter 支持 opacity 过渡动画）
-  const BATCH = 4;
-  for (let i = 0; i < nodeInfos.length; i += BATCH) {
-    const batch = nodeInfos.slice(i, i + BATCH);
-    chart.setOption({
-      series: batch.map(({ node, size }, j) => ({
-        id: `target-${i + j}`,
-        animation: true,
-        animationDuration: 500,
-        animationEasing: 'cubicOut',
-        data: [{ name: node.name, value: node.value,
-          itemStyle: { color: node.nodeColor, opacity: 1, shadowBlur: 14, shadowColor: node.nodeColor } }],
-      }))
-    });
-    await _sleep(NODE_DELAY * BATCH);
-  }
-
-  // 第三步：全部替换为 effectScatter 开启涟漪效果
-  await _sleep(200);
-  chart.setOption({
-    series: nodeInfos.map(({ node, size }, idx) => ({
+    series: nodeInfos.map(({ node, finalSize }, idx) => ({
       id: `target-${idx}`,
       type: 'effectScatter',
       coordinateSystem: 'geo',
       zlevel: 3,
       symbol: 'circle',
-      symbolSize: size,
+      symbolSize: 0,
       animation: false,
       data: [{ name: node.name, value: node.value,
-        itemStyle: { color: node.nodeColor, shadowBlur: 14, shadowColor: node.nodeColor } }],
+        itemStyle: { color: node.nodeColor, opacity: 0, shadowBlur: 0 } }],
       showEffectOn: 'render',
       rippleEffect: { brushType: 'stroke', scale: 2.5, period: 1.8 },
       label: { show: false },
     }))
+  });
+
+  // easeOutBack: 贝塞尔曲线近似，轻微过冲后回弹，弹出感
+  const DURATION = 600, STAGGER = NODE_DELAY;
+  function easeOutBack(t) {
+    if (t >= 1) return 1;
+    const c1 = 1.70158, c3 = c1 + 1;
+    return 1 + c3 * Math.pow(t - 1, 3) + c1 * Math.pow(t - 1, 2);
+  }
+
+  // 每帧一次 setOption 批量更新所有节点，不依赖 ECharts 内置动画
+  await new Promise(resolve => {
+    const t0 = performance.now();
+    function frame(now) {
+      const elapsed = now - t0;
+      const updates = [];
+      let allDone = true;
+      nodeInfos.forEach(({ node, finalSize }, idx) => {
+        const nodeElapsed = elapsed - idx * STAGGER;
+        if (nodeElapsed < 0) { allDone = false; return; }
+        const t = Math.min(nodeElapsed / DURATION, 1);
+        if (t < 1) allDone = false;
+        const eased = easeOutBack(t);
+        const sz = Math.max(0.01, eased * finalSize);
+        const op = Math.min(t * 2.5, 1);
+        updates.push({
+          id: `target-${idx}`,
+          symbolSize: sz,
+          data: [{ name: node.name, value: node.value,
+            itemStyle: { color: node.nodeColor, opacity: op,
+              shadowBlur: op * 14, shadowColor: node.nodeColor } }],
+        });
+      });
+      if (updates.length) chart.setOption({ series: updates });
+      if (!allDone) requestAnimationFrame(frame); else resolve();
+    }
+    requestAnimationFrame(frame);
   });
 }
 
