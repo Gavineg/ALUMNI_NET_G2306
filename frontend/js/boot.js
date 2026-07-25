@@ -15,7 +15,7 @@ function randChar() {
  * @param {number} glitchMs   乱码阶段持续时间
  * @param {number} resolveMs  每字母稳定延迟
  */
-export async function glitchResolve(el, target, glitchMs = 180, resolveMs = 20) {
+export async function glitchResolve(el, target, glitchMs = 150, resolveMs = 16) {
   // 乱码阶段
   const arr   = target.split('').map(() => randChar());
   const ticks = Math.floor(glitchMs / 40);
@@ -29,14 +29,14 @@ export async function glitchResolve(el, target, glitchMs = 180, resolveMs = 20) 
   for (let i = 0; i < target.length; i++) {
     arr[i] = target[i];
     el.textContent = arr.join('');
-    await sleep(resolveMs + Math.random() * 20);
+    await sleep(resolveMs + Math.random() * 14);
   }
 }
 
 /**
  * 普通打字机（用于子标题等辅助文字）
  */
-export async function typeWrite(el, text, speed = 55) {
+export async function typeWrite(el, text, speed = 75) {
   el.textContent = '';
   for (const char of text) {
     el.textContent += char;
@@ -71,7 +71,7 @@ function attachScrollTracker(terminal) {
   });
 }
 
-export async function biosAppend(terminal, lines, speed = 45) {
+export async function biosAppend(terminal, lines, speed = 65) {
   if (typingCtrl) typingCtrl.abort();
   typingCtrl = new AbortController();
   const { signal } = typingCtrl;
@@ -85,8 +85,8 @@ export async function biosAppend(terminal, lines, speed = 45) {
   }
 
   // 取整避免浮点 setTimeout 抖动；speed>=100 直接 0
-  const charDelay = speed >= 100 ? 0 : speed >= 10 ? Math.round(1 + Math.random() * 3) : Math.round(16 + Math.random() * 22);
-  const lineDelay = speed >= 100 ? 0 : speed >= 10 ? Math.round(8 + Math.random() * 12) : Math.round(160 + Math.random() * 200);
+  const charDelay = speed >= 100 ? 0 : speed >= 10 ? Math.round(1 + Math.random() * 3) : Math.round(16 + Math.random() * 18);
+  const lineDelay = speed >= 100 ? 0 : speed >= 10 ? Math.round(8 + Math.random() * 12) : Math.round(160 + Math.random() * 160);
 
   attachScrollTracker(terminal);
 

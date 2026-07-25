@@ -387,23 +387,9 @@ export async function runCommand(raw, ctx) {
   // —— SYSTEM REBOOT ——————————————————————————————————————————
   if(cmd==reboot){
     const lines = [L('> Broadcast message from root@localhost'), L('> (/dev/pts/0) at '+new Date().toString().toUpperCase()+'...'), L('> The system is going down for reboot NOW!')];
-    ctx.clearTerminal();
-    ctx.setFullscreen(true);
-    for (const item of lines) {
-      const div = document.createElement('div');
-      div.textContent = item.text;
-      if (item.status === 'OK') div.style.color = 'var(--hud-primary)';
-      else if (item.status === 'ERR') div.style.color = 'var(--hud-danger)';
-      else if (item.status === 'RDY') div.style.color = 'var(--hud-text-dim)';
-      else if (item.status === 'DONE') div.style.color = 'var(--hud-primary)';
-      terminal.appendChild(div);
-      if (!terminal._userScrolled) requestAnimationFrame(() => { terminal.scrollTop = terminal.scrollHeight; });
-      await sleep(500);
-    }
-    await sleep(1000);
-    location.reload();
+    lines.push(L(''));
+    location.reload(true);
   }
-
 
 
 

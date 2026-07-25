@@ -88,8 +88,8 @@
 
     async function boot() {
       // 乱码启动
-      await glitchResolve(headerEl, 'BOOTING ALUMNI_NET...', 180, 16);
-      await typeWrite(subEl, 'INITIALIZING MAP MODULE...', 16);
+      await glitchResolve(headerEl, 'BOOTING ALUMNI_NET...', 140, 12);
+      await typeWrite(subEl, 'INITIALIZING MAP MODULE...', 12);
 
       // 地图显示
       document.getElementById('map-container').style.opacity = '1';
@@ -97,7 +97,7 @@
 
       // 拉取数据，失败则自动重连
       subEl.textContent = '';
-      await typeWrite(subEl, 'FETCHING TARGET DATA...', 16);
+      await typeWrite(subEl, 'FETCHING TARGET DATA...', 12);
 
       let mapData = null;
       let retryCount = 0;
@@ -106,16 +106,16 @@
         if (!mapData) {
           retryCount++;
           subEl.textContent = '';
-          await typeWrite(subEl, `[ERR] API FAULT — RETRY ${retryCount} IN 2S...`, 16);
+          await typeWrite(subEl, `[ERR] API FAULT — RETRY ${retryCount} IN 2S...`, 12);
           await sleep(2000);
           subEl.textContent = '';
-          await typeWrite(subEl, 'RECONNECTING...', 16);
+          await typeWrite(subEl, 'RECONNECTING...', 12);
         }
       }
 
-      await glitchResolve(headerEl, '[G2306] CHUANG XIN BASE', 180, 16);
+      await glitchResolve(headerEl, '[G2306] CHUANG XIN BASE', 140, 12);
       subEl.textContent = '';
-      await typeWrite(subEl, 'LAUNCHING TRACER SWARM...', 16);
+      await typeWrite(subEl, 'LAUNCHING TRACER SWARM...', 12);
 
       launchParticles(chart, mapData.originCoords, mapData.linesData, FLIGHT_TIME);
 
@@ -125,13 +125,13 @@
       chart.setOption({ geo: { roam: true } });
 
       subEl.textContent = '';
-      await typeWrite(subEl, 'SIGNAL LOCKING TARGETS...', 16);
+      await typeWrite(subEl, 'SIGNAL LOCKING TARGETS...', 12);
 
       lastMapData = mapData;
       await revealTargets(chart, mapData.scatterData, mapData.linesData, mapData.colorMode);
 
       subEl.textContent = '';
-      await typeWrite(subEl, 'ALL TARGETS LOCKED. SYSTEM READY.', 16);
+      await typeWrite(subEl, 'ALL TARGETS LOCKED. SYSTEM READY.', 12);
 
       initMapUI(chart, initZoom, initCenter);
 
@@ -142,7 +142,7 @@
       const resetLabel = '[SYS.RESTORE_VIEW]';
       for (const ch of resetLabel) {
         resetBtn.textContent += ch;
-        await sleep(35 + Math.random() * 25);
+        await sleep(20 + Math.random() * 25);
       }
 
       // DOS 输入框：再打字出现（按钮先于输入框）
@@ -330,7 +330,7 @@
       const prompt = getPromptPrefix(localStorage.getItem('g2306_token')) + '> ';
       for (const ch of prompt) {
         dosPromptEl.textContent += ch;
-        await sleep(40 + Math.random() * 30);
+        await sleep(20 + Math.random() * 30);
       }
       dosInput.classList.add('ready');
       dosInput.focus();
