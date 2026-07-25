@@ -8,6 +8,14 @@ function randChar() {
   return GLITCH_CHARS[Math.floor(Math.random() * GLITCH_CHARS.length)];
 }
 
+// 外部可注入的暂停/恢复钩子，用于打字期间暂停 ECharts 动画
+let _onTypingStart = null;
+let _onTypingEnd   = null;
+export function setTypingHooks(onStart, onEnd) {
+  _onTypingStart = onStart;
+  _onTypingEnd   = onEnd;
+}
+
 /**
  * 乱码雨：先用随机字符填满 el，然后逐字母稳定成目标文字。
  * @param {HTMLElement} el
@@ -76,6 +84,8 @@ export async function biosAppend(terminal, lines, speed = 65) {
   typingCtrl = new AbortController();
   const { signal } = typingCtrl;
 
+  _onTypingStart?.();
+
   // abort-aware sleep — 信号触发时立即返回
   function asleep(ms) {
     return new Promise(r => {
@@ -117,10 +127,11 @@ export async function biosAppend(terminal, lines, speed = 65) {
     if (!terminal._userScrolled) scheduleScroll(terminal);
     await asleep(lineDelay);
   }
+  _onTypingEnd?.();
 }
 
 export function abortBios() {
-  if (typingCtrl) { typingCtrl.abort(); typingCtrl = null; }
+  if (typingCtrl) { typingCtrl.abort(); typingCtrl = null; _onTypingEnd?.(); }
 }
 
 export function sleep(ms) {

@@ -41,7 +41,7 @@
 
   <script type="module">
     import { FLIGHT_TIME, NODE_DELAY } from './js/config.js';
-    import { glitchResolve, typeWrite, sleep, abortBios } from './js/boot.js';
+    import { glitchResolve, typeWrite, sleep, abortBios, setTypingHooks } from './js/boot.js';
     import { fetchMapData } from './js/map-data.js';
     import { launchParticles, revealTargets, startNoiseLayer } from './js/map-particles.js';
     import { initMapUI, closePanel, openPanel, clearTerminal, flyToCoord, handleCloseBtn } from './js/map-ui.js';
@@ -134,6 +134,12 @@
       await typeWrite(subEl, 'ALL TARGETS LOCKED. SYSTEM READY.', 12);
 
       initMapUI(chart, initZoom, initCenter);
+
+      // 打字期间暂停 pulse-lines 动画，减少主线程竞争
+      setTypingHooks(
+        () => chart.setOption({ series: [{ id: 'pulse-lines', effect: { show: false } }] }),
+        () => chart.setOption({ series: [{ id: 'pulse-lines', effect: { show: true } }] })
+      );
 
       // 重置按钮：打字出现
       const resetBtn = document.getElementById('reset-btn');

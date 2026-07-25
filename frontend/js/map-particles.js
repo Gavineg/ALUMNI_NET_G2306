@@ -34,12 +34,16 @@ export function launchParticles(chart, originCoords, linesData, flightTime) {
     }]
   });
 
-  // 三层彗星（底/中/顶）同时发射
+  // 一层彗星（原三层合并，减少 ECharts 动画 series 数量）
   const layers = [
-    { id: 'comet1', period: 3.5 / (flightTime / 1000), size: 5, trail: 0.25, color: '#b8ff47', opacity: 0.9 },
-    { id: 'comet2', period: 2.5 / (flightTime / 1000), size: 2.5, trail: 0.55, color: '#e8ffc0', opacity: 0.65 },
-    { id: 'comet3', period: 1.8 / (flightTime / 1000), size: 1.2, trail: 0.82, color: '#fffde0', opacity: 0.45 }
+    { id: 'comet1', period: 3.5 / (flightTime / 1000), size: 4, trail: 0.35, color: '#b8ff47', opacity: 0.85 },
   ];
+
+  // 移除多余的 comet series（如果之前存在）
+  chart.setOption({ series: [
+    { id: 'comet2', type: 'lines', data: [], effect: { show: false } },
+    { id: 'comet3', type: 'lines', data: [], effect: { show: false } },
+  ]});
 
   chart.setOption({
     series: layers.map(l => ({
@@ -98,35 +102,37 @@ export async function revealTargets(chart, scatterData, linesData, colorMode) {
     ]
   });
 
-  // 逐个渐显（近→远）
-  for (let i = 0; i < scatterData.length; i++) {
-    const node = scatterData[i];
-    const cluster = node.value[2];
-    const memberCount = cluster.universities
-      ? cluster.universities.reduce((s, u) => s + (u.members?.length || 0), 0)
-      : (cluster.members?.length || 1);
-    const size = Math.min(7 + memberCount * 2, 12);
-
+  // 逐个渐显（近→远）— 每4个节点批量 setOption，减少重绘次数
+  const BATCH = 4;
+  for (let i = 0; i < scatterData.length; i += BATCH) {
+    const batch = scatterData.slice(i, i + BATCH);
     chart.setOption({
-      series: [{
-        id: `target-${i}`,
-        type: 'effectScatter',
-        coordinateSystem: 'geo',
-        zlevel: 3,
-        symbol: 'circle',
-        symbolSize: size,
-        data: [{
-          name:  node.name,
-          value: node.value,
-          itemStyle: { color: node.nodeColor, shadowBlur: 12, shadowColor: node.nodeColor }
-        }],
-        showEffectOn: 'render',
-        rippleEffect: { show: false },
-        label: { show: false }
-      }]
+      series: batch.map((node, j) => {
+        const idx = i + j;
+        const cluster = node.value[2];
+        const memberCount = cluster.universities
+          ? cluster.universities.reduce((s, u) => s + (u.members?.length || 0), 0)
+          : (cluster.members?.length || 1);
+        const size = Math.min(7 + memberCount * 2, 12);
+        return {
+          id: `target-${idx}`,
+          type: 'effectScatter',
+          coordinateSystem: 'geo',
+          zlevel: 3,
+          symbol: 'circle',
+          symbolSize: size,
+          data: [{
+            name:  node.name,
+            value: node.value,
+            itemStyle: { color: node.nodeColor, shadowBlur: 12, shadowColor: node.nodeColor }
+          }],
+          showEffectOn: 'render',
+          rippleEffect: { show: false },
+          label: { show: false }
+        };
+      })
     });
-
-    await _sleep(NODE_DELAY);
+    await _sleep(NODE_DELAY * BATCH);
   }
 }
 
@@ -146,32 +152,43 @@ function spawnScanBeam(lat) {
 }
 
 /**
- * canvas 噪点层（每帧随机像素，模拟老化CRT颗粒）
+ * canvas 噪点层 — 1/4 分辨率 + 每4帧更新一次，大幅降低 CPU 占用
  */
 export function startNoiseLayer() {
   const canvas = document.getElementById('noise-canvas');
   if (!canvas) return;
   const ctx = canvas.getContext('2d');
 
+  // 用小 canvas 绘制再缩放到全屏，像素量减少 16 倍
+  const offscreen = document.createElement('canvas');
+  const octx = offscreen.getContext('2d');
+
   function resize() {
     canvas.width  = window.innerWidth;
     canvas.height = window.innerHeight;
+    offscreen.width  = Math.ceil(window.innerWidth  / 4);
+    offscreen.height = Math.ceil(window.innerHeight / 4);
   }
   resize();
   window.addEventListener('resize', resize);
 
+  let frameCount = 0;
   let frame;
   function draw() {
-    const w = canvas.width, h = canvas.height;
-    const img = ctx.createImageData(w, h);
+    frame = requestAnimationFrame(draw);
+    if (++frameCount % 4 !== 0) return; // 每4帧渲染一次
+    const w = offscreen.width, h = offscreen.height;
+    const img = octx.createImageData(w, h);
     const d   = img.data;
     for (let i = 0; i < d.length; i += 4) {
       const v = Math.random() > 0.5 ? 255 : 0;
       d[i] = d[i+1] = d[i+2] = v;
       d[i+3] = 255;
     }
-    ctx.putImageData(img, 0, 0);
-    frame = requestAnimationFrame(draw);
+    octx.putImageData(img, 0, 0);
+    // 缩放绘制到全尺寸 canvas（imageSmoothingEnabled=false 保持颗粒感）
+    ctx.imageSmoothingEnabled = false;
+    ctx.drawImage(offscreen, 0, 0, canvas.width, canvas.height);
   }
   draw();
   return () => cancelAnimationFrame(frame);
