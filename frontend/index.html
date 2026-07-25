@@ -133,7 +133,8 @@
 
       lastMapData = mapData;
       await revealTargets(chart, mapData.scatterData, mapData.linesData, mapData.colorMode, {
-        nodeAnim: mapData.nodeAnim
+        nodeAnim: mapData.nodeAnim,
+        lineAnim: mapData.lineAnim
       });
 
       if (mapData.lineAnim === 'rotary') {

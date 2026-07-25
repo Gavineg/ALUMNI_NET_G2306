@@ -149,25 +149,26 @@ function _doLineAnim(chart, linesData, flightTime, style) {
  * arrivalDelay: 粒子飞行结束到第一个节点显示的额外等待（ms），默认0
  */
 export async function revealTargets(chart, scatterData, linesData, colorMode, opts = {}) {
-  const { nodeAnim = 'expand' } = opts;
+  const { nodeAnim = 'expand', lineAnim = 'comet' } = opts;
 
-  // 清除所有飞行粒子系列（comet/pulse/laser/ghost/matrix/radar 飞行阶段）
+  // 完全清除所有飞行粒子系列：effect关掉 + lineStyle清零 + 数据清空
   chart.setOption({ series: [
-    { id:'comet1', effect:{ show:false } },
-    { id:'comet2', effect:{ show:false } },
-    { id:'comet3', effect:{ show:false } },
-    { id:'comet4', effect:{ show:false } },
-    { id:'comet5', effect:{ show:false } },
-    { id:'comet6', effect:{ show:false } },
+    { id:'comet1', effect:{ show:false }, lineStyle:{ width:0, opacity:0 }, data:[] },
+    { id:'comet2', effect:{ show:false }, lineStyle:{ width:0, opacity:0 }, data:[] },
+    { id:'comet3', effect:{ show:false }, lineStyle:{ width:0, opacity:0 }, data:[] },
+    { id:'comet4', effect:{ show:false }, lineStyle:{ width:0, opacity:0 }, data:[] },
+    { id:'comet5', effect:{ show:false }, lineStyle:{ width:0, opacity:0 }, data:[] },
+    { id:'comet6', effect:{ show:false }, lineStyle:{ width:0, opacity:0 }, data:[] },
   ]});
 
-  // 静态虚线底层
+  // 静态底线（comet模式保留微弱脉冲，其他模式纯静态）
   chart.setOption({
     series: [
       { id:'static-lines', type:'lines', coordinateSystem:'geo', zlevel:0,
         lineStyle:{ color:'rgba(184,255,71,0.18)', width:1, curveness:0.22, type:[5,9] }, data:linesData },
       { id:'pulse-lines', type:'lines', coordinateSystem:'geo', zlevel:1,
-        effect:{ show:true, period:1.4, trailLength:0.2, color:'#b8ff47', symbolSize:2 },
+        effect:{ show: lineAnim === 'comet',
+                 period:1.4, trailLength:0.2, color:'rgba(184,255,71,0.5)', symbolSize:2 },
         lineStyle:{ color:'rgba(0,0,0,0)', width:0, curveness:0.22 }, data:linesData }
     ]
   });
@@ -345,15 +346,14 @@ async function _animCascade(chart, nodeInfos) {
 
 /**
  * 旋转雷达扫描 — 在节点显示后持续运行
- * 扫描线从深圳出发点旋转，扫到节点瞬间最亮，然后慢慢变暗
+ * 拟真雷达屏幕：同心圆环、十字准线、磷光衰减轨迹、节点被扫到时留下光点并淡出
  */
 export function startRadarSweep(chart, originCoords, scatterData) {
   const container = chart.getDom();
+  if (getComputedStyle(container).position === 'static') container.style.position = 'relative';
+
   const cvs = document.createElement('canvas');
   cvs.style.cssText = 'position:absolute;top:0;left:0;pointer-events:none;z-index:5;';
-  cvs.width  = container.offsetWidth;
-  cvs.height = container.offsetHeight;
-  if (getComputedStyle(container).position === 'static') container.style.position = 'relative';
   container.appendChild(cvs);
   const ctx = cvs.getContext('2d');
 
@@ -365,20 +365,26 @@ export function startRadarSweep(chart, originCoords, scatterData) {
     return { node, finalSize: Math.min(7 + mc * 2, 12) };
   });
 
-  const brightness = new Float32Array(nodeInfos.length).fill(0);
-  const HIT_THRESH = 0.07; // radians — how close scan line needs to be to "hit" a node
-  const RPM = 5;
+  const brightness = new Float32Array(nodeInfos.length).fill(0.08);
+  // blipAge counts rAF frames since last hit; used to fade the canvas blip dot
+  const blipAge = new Float32Array(nodeInfos.length).fill(9999);
+
+  const HIT_THRESH = 0.06;   // radians
+  const RPM = 4;
   const RAD_PER_MS = (RPM / 60) * 2 * Math.PI / 1000;
-  const TRAIL = 0.55; // radians of the glowing tail
-  let angle = -Math.PI / 2; // start pointing north
+  const TRAIL_RAD = 1.3;     // ~75° phosphor tail
+  const TRAIL_STEPS = 48;
+
+  let angle = -Math.PI / 2;  // start pointing north
   let prev = performance.now();
   let rafId;
 
-  const onResize = () => {
+  function resize() {
     cvs.width  = container.offsetWidth;
     cvs.height = container.offsetHeight;
-  };
-  window.addEventListener('resize', onResize);
+  }
+  resize();
+  window.addEventListener('resize', resize);
 
   function frame(now) {
     const dt = Math.min(now - prev, 100); prev = now;
@@ -388,71 +394,135 @@ export function startRadarSweep(chart, originCoords, scatterData) {
     const w = cvs.width, h = cvs.height;
     ctx.clearRect(0, 0, w, h);
 
-    const R = Math.max(w, h) * 1.5;
-    ctx.save();
-    ctx.translate(ox, oy);
+    // ── compute radar radius from furthest node ───────────────────
+    let R = Math.max(w, h) * 0.38;
+    nodeInfos.forEach(({ node }) => {
+      const [px, py] = chart.convertToPixel('geo', [node.value[0], node.value[1]]);
+      R = Math.max(R, Math.hypot(px - ox, py - oy) * 1.15);
+    });
 
-    // sweep tail: filled sector fading from transparent to bright
-    const steps = 24;
-    for (let i = 0; i < steps; i++) {
-      const a0 = angle - TRAIL * (i + 1) / steps;
-      const a1 = angle - TRAIL * i / steps;
-      const alpha = 0.18 * (i / steps) * (i / steps);
+    // ── concentric range rings ────────────────────────────────────
+    ctx.save();
+    ctx.setLineDash([3, 9]);
+    for (let i = 1; i <= 4; i++) {
       ctx.beginPath();
-      ctx.moveTo(0, 0);
-      ctx.arc(0, 0, R, a0, a1, false);
+      ctx.arc(ox, oy, R * i / 4, 0, Math.PI * 2);
+      ctx.strokeStyle = `rgba(184,255,71,${0.10 - i * 0.015})`;
+      ctx.lineWidth = 0.6;
+      ctx.stroke();
+    }
+    ctx.setLineDash([]);
+
+    // ── cross-hair ───────────────────────────────────────────────
+    ctx.strokeStyle = 'rgba(184,255,71,0.07)';
+    ctx.lineWidth = 0.5;
+    ctx.setLineDash([2, 12]);
+    ctx.beginPath();
+    ctx.moveTo(ox - R * 1.05, oy); ctx.lineTo(ox + R * 1.05, oy);
+    ctx.moveTo(ox, oy - R * 1.05); ctx.lineTo(ox, oy + R * 1.05);
+    ctx.stroke();
+    ctx.setLineDash([]);
+    ctx.restore();
+
+    // ── phosphor persistence trail ───────────────────────────────
+    // Cubic falloff: dim near tail, bright near leading edge
+    for (let i = 0; i < TRAIL_STEPS; i++) {
+      const t = (i + 1) / TRAIL_STEPS;          // 0=oldest tail, 1=leading edge
+      const a0 = angle - TRAIL_RAD * (1 - t);
+      const a1 = angle - TRAIL_RAD * (1 - (i + 1) / TRAIL_STEPS);
+      const alpha = t * t * t * 0.28;
+      ctx.beginPath();
+      ctx.moveTo(ox, oy);
+      ctx.arc(ox, oy, R * 1.02, a0, a1, false);
       ctx.closePath();
-      ctx.fillStyle = `rgba(184,255,71,${alpha.toFixed(3)})`;
+      ctx.fillStyle = `rgba(0,230,70,${alpha.toFixed(4)})`;
       ctx.fill();
     }
 
-    // sweep line
+    // ── sweep line (leading edge with gradient glow) ─────────────
+    const ex = ox + R * 1.02 * Math.cos(angle);
+    const ey = oy + R * 1.02 * Math.sin(angle);
+    const grad = ctx.createLinearGradient(ox, oy, ex, ey);
+    grad.addColorStop(0,    'rgba(184,255,71,0.0)');
+    grad.addColorStop(0.25, 'rgba(184,255,71,0.3)');
+    grad.addColorStop(1.0,  'rgba(184,255,71,1.0)');
+    ctx.save();
     ctx.beginPath();
-    ctx.moveTo(0, 0);
-    ctx.lineTo(R * Math.cos(angle), R * Math.sin(angle));
-    ctx.strokeStyle = 'rgba(184,255,71,0.85)';
+    ctx.moveTo(ox, oy);
+    ctx.lineTo(ex, ey);
+    ctx.strokeStyle = grad;
     ctx.lineWidth = 1.5;
-    ctx.shadowBlur = 10;
-    ctx.shadowColor = '#b8ff47';
+    ctx.shadowBlur = 14;
+    ctx.shadowColor = 'rgba(184,255,71,0.9)';
     ctx.stroke();
     ctx.restore();
 
-    // update node brightness
+    // ── origin dot ───────────────────────────────────────────────
+    ctx.save();
+    ctx.beginPath();
+    ctx.arc(ox, oy, 3.5, 0, Math.PI * 2);
+    ctx.fillStyle = '#b8ff47';
+    ctx.shadowBlur = 18;
+    ctx.shadowColor = '#b8ff47';
+    ctx.fill();
+    ctx.restore();
+
+    // ── node hit detection + canvas blips ────────────────────────
     let anyChange = false;
     nodeInfos.forEach(({ node }, idx) => {
       const [px, py] = chart.convertToPixel('geo', [node.value[0], node.value[1]]);
       const nodeAngle = Math.atan2(py - oy, px - ox);
       let diff = ((nodeAngle - angle) % (2 * Math.PI) + 2 * Math.PI) % (2 * Math.PI);
       if (diff > Math.PI) diff -= 2 * Math.PI;
-      const prev_b = brightness[idx];
+
+      const prevB = brightness[idx];
       if (Math.abs(diff) < HIT_THRESH) {
-        brightness[idx] = 1;
+        brightness[idx] = 1.0;
+        blipAge[idx] = 0;
       } else {
-        brightness[idx] = Math.max(0.1, brightness[idx] * 0.985);
+        brightness[idx] = Math.max(0.08, brightness[idx] * 0.986);
+        if (blipAge[idx] < 9999) blipAge[idx]++;
       }
-      if (Math.abs(brightness[idx] - prev_b) > 0.005) anyChange = true;
+      if (Math.abs(brightness[idx] - prevB) > 0.004) anyChange = true;
+
+      // draw radar blip on canvas (fades over ~240 frames ≈ 4 seconds)
+      const age = blipAge[idx];
+      if (age < 240) {
+        const fade = Math.max(0, 1 - age / 240);
+        const r = 2.5 + fade * 3.5;
+        ctx.save();
+        ctx.beginPath();
+        ctx.arc(px, py, r, 0, Math.PI * 2);
+        ctx.fillStyle = `rgba(184,255,71,${(fade * 0.85).toFixed(3)})`;
+        ctx.shadowBlur = 10 * fade;
+        ctx.shadowColor = '#b8ff47';
+        ctx.fill();
+        ctx.restore();
+      }
     });
 
+    // ── update ECharts nodes (only when brightness changed) ──────
     if (anyChange) {
       chart.setOption({ series: nodeInfos.map(({ node, finalSize }, idx) => {
         const b = brightness[idx];
         return {
           id: `target-${idx}`,
-          symbolSize: finalSize * (0.65 + 0.35 * b),
+          symbolSize: finalSize * (0.55 + 0.45 * b),
           data: [{ name: node.name, value: node.value,
-            itemStyle: { color: node.nodeColor, opacity: 0.25 + 0.75 * b,
-              shadowBlur: b * 22, shadowColor: '#b8ff47' } }]
+            itemStyle: { color: node.nodeColor,
+              opacity: 0.15 + 0.85 * b,
+              shadowBlur: b * 26, shadowColor: '#b8ff47' } }]
         };
       })});
     }
 
     rafId = requestAnimationFrame(frame);
   }
-  rafId = requestAnimationFrame(frame);
 
+  rafId = requestAnimationFrame(frame);
   return () => {
     cancelAnimationFrame(rafId);
-    window.removeEventListener('resize', onResize);
+    window.removeEventListener('resize', resize);
     cvs.remove();
   };
 }
