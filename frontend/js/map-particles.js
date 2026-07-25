@@ -152,43 +152,32 @@ function spawnScanBeam(lat) {
 }
 
 /**
- * canvas 噪点层 — 1/4 分辨率 + 每4帧更新一次，大幅降低 CPU 占用
+ * canvas 噪点层（每帧随机像素，模拟老化CRT颗粒）
  */
 export function startNoiseLayer() {
   const canvas = document.getElementById('noise-canvas');
   if (!canvas) return;
   const ctx = canvas.getContext('2d');
 
-  // 用小 canvas 绘制再缩放到全屏，像素量减少 16 倍
-  const offscreen = document.createElement('canvas');
-  const octx = offscreen.getContext('2d');
-
   function resize() {
     canvas.width  = window.innerWidth;
     canvas.height = window.innerHeight;
-    offscreen.width  = Math.ceil(window.innerWidth  / 4);
-    offscreen.height = Math.ceil(window.innerHeight / 4);
   }
   resize();
   window.addEventListener('resize', resize);
 
-  let frameCount = 0;
   let frame;
   function draw() {
-    frame = requestAnimationFrame(draw);
-    if (++frameCount % 4 !== 0) return; // 每4帧渲染一次
-    const w = offscreen.width, h = offscreen.height;
-    const img = octx.createImageData(w, h);
+    const w = canvas.width, h = canvas.height;
+    const img = ctx.createImageData(w, h);
     const d   = img.data;
     for (let i = 0; i < d.length; i += 4) {
       const v = Math.random() > 0.5 ? 255 : 0;
       d[i] = d[i+1] = d[i+2] = v;
       d[i+3] = 255;
     }
-    octx.putImageData(img, 0, 0);
-    // 缩放绘制到全尺寸 canvas（imageSmoothingEnabled=false 保持颗粒感）
-    ctx.imageSmoothingEnabled = false;
-    ctx.drawImage(offscreen, 0, 0, canvas.width, canvas.height);
+    ctx.putImageData(img, 0, 0);
+    frame = requestAnimationFrame(draw);
   }
   draw();
   return () => cancelAnimationFrame(frame);
