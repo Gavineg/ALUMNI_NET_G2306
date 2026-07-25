@@ -185,33 +185,49 @@ function spawnScanBeam(lat) {
 }
 
 /**
- * canvas 噪点层（每帧随机像素，模拟老化CRT颗粒）
+ * canvas 噪点层 — OffscreenCanvas Worker（主线程零开销）
+ * Fallback: 降帧主线程版（~21fps），兼容不支持 OffscreenCanvas 的浏览器
  */
 export function startNoiseLayer() {
   const canvas = document.getElementById('noise-canvas');
   if (!canvas) return;
-  const ctx = canvas.getContext('2d');
 
-  function resize() {
-    canvas.width  = window.innerWidth;
-    canvas.height = window.innerHeight;
+  // ── Worker path (Chrome / Firefox / Safari 16.4+) ─────────────
+  if (typeof canvas.transferControlToOffscreen === 'function') {
+    const w = window.innerWidth, h = window.innerHeight;
+    const offscreen = canvas.transferControlToOffscreen();
+    const worker = new Worker(new URL('./noise-worker.js', import.meta.url));
+    worker.postMessage({ type: 'init', canvas: offscreen, w, h }, [offscreen]);
+    const onResize = () =>
+      worker.postMessage({ type: 'resize', w: window.innerWidth, h: window.innerHeight });
+    window.addEventListener('resize', onResize);
+    return () => {
+      worker.postMessage({ type: 'stop' });
+      worker.terminate();
+      window.removeEventListener('resize', onResize);
+    };
   }
+
+  // ── Fallback: throttled main-thread version ────────────────────
+  const ctx = canvas.getContext('2d');
+  function resize() { canvas.width = window.innerWidth; canvas.height = window.innerHeight; }
   resize();
   window.addEventListener('resize', resize);
-
-  let frame;
-  function draw() {
-    const w = canvas.width, h = canvas.height;
-    const img = ctx.createImageData(w, h);
-    const d   = img.data;
-    for (let i = 0; i < d.length; i += 4) {
-      const v = Math.random() > 0.5 ? 255 : 0;
-      d[i] = d[i+1] = d[i+2] = v;
-      d[i+3] = 255;
+  let frame, last = 0;
+  function draw(ts) {
+    if (ts - last > 48) {
+      last = ts;
+      const w = canvas.width, h = canvas.height;
+      const img = ctx.createImageData(w, h);
+      const d = img.data;
+      for (let i = 0; i < d.length; i += 4) {
+        const v = Math.random() > 0.5 ? 255 : 0;
+        d[i] = d[i+1] = d[i+2] = v; d[i+3] = 255;
+      }
+      ctx.putImageData(img, 0, 0);
     }
-    ctx.putImageData(img, 0, 0);
     frame = requestAnimationFrame(draw);
   }
-  draw();
+  requestAnimationFrame(draw);
   return () => cancelAnimationFrame(frame);
 }
