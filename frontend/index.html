@@ -181,12 +181,17 @@
         const minLon = Math.min(...lons), maxLon = Math.max(...lons);
         const minLat = Math.min(...lats), maxLat = Math.max(...lats);
         const targetCenter = [(minLon + maxLon) / 2, (minLat + maxLat) / 2];
-        // 先把 center 移到目标，等两帧渲染后量像素算 zoom
-        chart.setOption({ geo: { center: targetCenter } }, { silent: true });
-        await new Promise(r => requestAnimationFrame(() => requestAnimationFrame(r)));
+
+        // 在当前视角下直接量像素，不提前移动地图（避免节点闪跳）
         const mv = calcMobileView(mapData.scatterData, mapData.originCoords, initZoom);
         const targetZoom = mv.zoom;
-        // easeInOut 缓动过渡
+
+        // 禁用所有节点系列的内置动画，防止缓动时节点自己动
+        const nodeAnimOff = mapData.scatterData.map((_, idx) => ({
+          id: `target-${idx}`, animation: false,
+        }));
+        chart.setOption({ series: nodeAnimOff }, { silent: true });
+
         const fromZoom   = initZoom;
         const fromCenter = [...initCenter];
         const ZOOM_DUR   = 900;
