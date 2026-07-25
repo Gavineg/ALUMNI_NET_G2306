@@ -1,113 +1,152 @@
 /**
- * 粒子与动效逻辑
- * - 三层彗星粒子（辐射感）
- * - 目标节点按距离逐个渐显 + 扫描光柱
- * - 静态底线（电流虚线 + 循环脉冲粒子）
- * - 准星图标（自定义 SVG path）
+ * 粒子与动效逻辑 — 多风格可选
  */
 
 import { NODE_DELAY } from './config.js';
 const _sleep = ms => new Promise(r => setTimeout(r, ms));
 
-const CROSSHAIR_PATH = 'circle';
-const DIAMOND_PATH   = 'path://M0,-14 L10,0 L0,14 L-10,0 Z';
+// ── 出发点图标 SVG paths ──────────────────────────────────────
+const ORIGIN_ICONS = {
+  diamond:   'path://M0,-14 L10,0 L0,14 L-10,0 Z',
+  crosshair: 'path://M-13,0 L-5,0 M5,0 L13,0 M0,-13 L0,-5 M0,5 L0,13 M-3,-3 L3,-3 L3,3 L-3,3 Z',
+  hexagon:   'path://M0,-13 L11,-6.5 L11,6.5 L0,13 L-11,6.5 L-11,-6.5 Z',
+  target:    'path://M0,-12 A12,12 0 1,1 -0.01,-12 Z M0,-6 A6,6 0 1,1 -0.01,-6 Z M-13,0 L-9,0 M9,0 L13,0 M0,-13 L0,-9 M0,9 L0,13',
+  signal:    'path://M-11,-8 A14,14 0 0,1 11,-8 M-7,-2 A9,9 0 0,1 7,-2 M-3,4 A4,4 0 0,1 3,4 M0,10 L0,12',
+};
 
-/**
- * 设置出发点 + 发射三层彗星粒子
- */
-/**
- * 设置出发点 + 发射三层彗星粒子（赛博朋克黑客风）
- */
-export function launchParticles(chart, originCoords, linesData, flightTime) {
-  // 出发点：菱形 + 红橙脉冲光晕
+// ── 出发点颜色主题 ───────────────────────────────────────────
+const ICON_COLOR = { color: '#ff4b1f', shadowBlur: 24, shadowColor: 'rgba(255,75,31,0.8)' };
+
+export function launchParticles(chart, originCoords, linesData, flightTime, opts = {}) {
+  const { originIcon = 'diamond', lineAnim = 'comet' } = opts;
+  const symbol = ORIGIN_ICONS[originIcon] || ORIGIN_ICONS.diamond;
+
+  // 出发点
   chart.setOption({
     series: [{
-      id: 'origin',
-      name: 'Origin',
-      type: 'effectScatter',
-      coordinateSystem: 'geo',
-      zlevel: 4,
-      symbol: DIAMOND_PATH,
-      symbolSize: 14,
+      id: 'origin', type: 'effectScatter', coordinateSystem: 'geo', zlevel: 4,
+      symbol, symbolSize: originIcon === 'crosshair' ? 22 : 16,
       data: [{ name: 'ORIGIN', value: originCoords }],
       showEffectOn: 'render',
       rippleEffect: { brushType: 'stroke', scale: 3, period: 2 },
-      itemStyle: { color: '#ff4b1f', shadowBlur: 24, shadowColor: 'rgba(255,75,31,0.8)' },
-      label: { show: false }
+      itemStyle: ICON_COLOR, label: { show: false }
     }]
   });
 
-  // 三层彗星：主光束 + 余晖 + 电离尾迹，营造数据包穿越网络的视觉
-  const layers = [
-    // 主光束：亮绿，粗，短尾
-    { id: 'comet1', period: 3.2 / (flightTime / 1000), size: 6,   trail: 0.15, color: '#b8ff47', opacity: 1.0  },
-    // 余晖：淡黄，中，中尾
-    { id: 'comet2', period: 2.4 / (flightTime / 1000), size: 3,   trail: 0.45, color: '#d4ff80', opacity: 0.7  },
-    // 电离尾迹：白蓝，细，长尾
-    { id: 'comet3', period: 1.6 / (flightTime / 1000), size: 1.5, trail: 0.78, color: '#aaffee', opacity: 0.4  },
-  ];
+  _doLineAnim(chart, linesData, flightTime, lineAnim);
+}
 
-  chart.setOption({
-    series: layers.map(l => ({
-      id: l.id,
-      type: 'lines',
-      coordinateSystem: 'geo',
-      zlevel: 2,
-      effect: {
-        show: true,
-        period: l.period,
-        trailLength: l.trail,
-        color: l.color,
-        symbolSize: l.size
-      },
-      lineStyle: { color: 'rgba(0,0,0,0)', width: 0, curveness: 0.22, opacity: l.opacity },
-      data: linesData
-    }))
-  });
+function _doLineAnim(chart, linesData, flightTime, style) {
+  const p = flightTime / 1000;
+
+  if (style === 'pulse') {
+    // 脉冲波：3波密集短粒子，间隔偏移
+    chart.setOption({ series: [
+      { id:'comet1', type:'lines', coordinateSystem:'geo', zlevel:2,
+        effect:{ show:true, period:p*0.5, trailLength:0.02, color:'#b8ff47', symbolSize:5 },
+        lineStyle:{ color:'rgba(0,0,0,0)', width:0, curveness:0.18 }, data:linesData },
+      { id:'comet2', type:'lines', coordinateSystem:'geo', zlevel:2,
+        effect:{ show:true, period:p*0.5, trailLength:0.02, color:'#ffffff', symbolSize:3, delay:200 },
+        lineStyle:{ color:'rgba(0,0,0,0)', width:0, curveness:0.18 }, data:linesData },
+      { id:'comet3', type:'lines', coordinateSystem:'geo', zlevel:2,
+        effect:{ show:true, period:p*0.5, trailLength:0.02, color:'#b8ff47', symbolSize:2, delay:400 },
+        lineStyle:{ color:'rgba(0,0,0,0)', width:0, curveness:0.18 }, data:linesData },
+    ]});
+
+  } else if (style === 'laser') {
+    // 直线闪射：无弯曲，极快单粒子
+    chart.setOption({ series: [
+      { id:'comet1', type:'lines', coordinateSystem:'geo', zlevel:2,
+        effect:{ show:true, period:p*0.6, trailLength:0.0, color:'#b8ff47', symbolSize:8 },
+        lineStyle:{ color:'rgba(184,255,71,0.12)', width:1.5, curveness:0 }, data:linesData },
+      { id:'comet2', type:'lines', coordinateSystem:'geo', zlevel:2,
+        effect:{ show:true, period:p*0.4, trailLength:0.0, color:'#ffffff', symbolSize:4 },
+        lineStyle:{ color:'rgba(0,0,0,0)', width:0, curveness:0 }, data:linesData },
+      { id:'comet3', type:'lines', coordinateSystem:'geo', zlevel:1,
+        effect:{ show:false },
+        lineStyle:{ color:'rgba(184,255,71,0.06)', width:3, curveness:0 }, data:linesData },
+    ]});
+
+  } else if (style === 'ghost') {
+    // 鬼影数据包：6层慢速低透明度幽灵叠影
+    const ghosts = [
+      { id:'comet1', per:p*1.4, trail:0.6, color:'#b8ff47', sz:4, op:0.5 },
+      { id:'comet2', per:p*1.1, trail:0.4, color:'#00ffcc', sz:3, op:0.35 },
+      { id:'comet3', per:p*0.9, trail:0.7, color:'#b8ff47', sz:2, op:0.25 },
+      { id:'comet4', per:p*1.6, trail:0.8, color:'#ffffff', sz:1.5, op:0.15 },
+      { id:'comet5', per:p*0.7, trail:0.3, color:'#00ffcc', sz:2, op:0.3 },
+      { id:'comet6', per:p*1.2, trail:0.5, color:'#b8ff47', sz:1, op:0.1 },
+    ];
+    chart.setOption({ series: ghosts.map(g => ({
+      id:g.id, type:'lines', coordinateSystem:'geo', zlevel:2,
+      effect:{ show:true, period:g.per, trailLength:g.trail, color:g.color, symbolSize:g.sz },
+      lineStyle:{ color:'rgba(0,0,0,0)', width:0, curveness:0.28, opacity:g.op }, data:linesData
+    }))});
+
+  } else if (style === 'matrix') {
+    // 矩阵数字流：极快多发，短尾
+    chart.setOption({ series: [
+      { id:'comet1', type:'lines', coordinateSystem:'geo', zlevel:2,
+        effect:{ show:true, period:p*0.25, trailLength:0.04, color:'#00ff41', symbolSize:6 },
+        lineStyle:{ color:'rgba(0,255,65,0.08)', width:0.5, curveness:0.15 }, data:linesData },
+      { id:'comet2', type:'lines', coordinateSystem:'geo', zlevel:2,
+        effect:{ show:true, period:p*0.18, trailLength:0.02, color:'#b8ff47', symbolSize:3, delay:80 },
+        lineStyle:{ color:'rgba(0,0,0,0)', width:0, curveness:0.15 }, data:linesData },
+      { id:'comet3', type:'lines', coordinateSystem:'geo', zlevel:2,
+        effect:{ show:true, period:p*0.3, trailLength:0.06, color:'#aaffee', symbolSize:2, delay:160 },
+        lineStyle:{ color:'rgba(0,0,0,0)', width:0, curveness:0.1 }, data:linesData },
+    ]});
+
+  } else if (style === 'radar') {
+    // 雷达扫描：同心涟漪扩散 + 粗线慢飞
+    chart.setOption({ series: [
+      { id:'comet1', type:'lines', coordinateSystem:'geo', zlevel:2,
+        effect:{ show:true, period:p*0.8, trailLength:0.35, color:'#b8ff47', symbolSize:5 },
+        lineStyle:{ color:'rgba(184,255,71,0.15)', width:1, curveness:0.1 }, data:linesData },
+      { id:'comet2', type:'lines', coordinateSystem:'geo', zlevel:2,
+        effect:{ show:true, period:p*1.2, trailLength:0.5, color:'#00ffcc', symbolSize:2 },
+        lineStyle:{ color:'rgba(0,0,0,0)', width:0, curveness:0.1 }, data:linesData },
+      { id:'comet3', type:'effectScatter', coordinateSystem:'geo', zlevel:1,
+        symbol:'circle', symbolSize:8,
+        data:[{ name:'ORIGIN', value:linesData[0]?.coords[0]||[] }],
+        showEffectOn:'render', rippleEffect:{ brushType:'fill', scale:12, period:1.2 },
+        itemStyle:{ color:'rgba(0,255,204,0.0)' }, label:{ show:false } },
+    ]});
+
+  } else {
+    // comet（默认）：三层彗星
+    const layers = [
+      { id:'comet1', period:3.2/p, size:6,   trail:0.15, color:'#b8ff47', opacity:1.0 },
+      { id:'comet2', period:2.4/p, size:3,   trail:0.45, color:'#d4ff80', opacity:0.7 },
+      { id:'comet3', period:1.6/p, size:1.5, trail:0.78, color:'#aaffee', opacity:0.4 },
+    ];
+    chart.setOption({ series: layers.map(l => ({
+      id:l.id, type:'lines', coordinateSystem:'geo', zlevel:2,
+      effect:{ show:true, period:l.period, trailLength:l.trail, color:l.color, symbolSize:l.size },
+      lineStyle:{ color:'rgba(0,0,0,0)', width:0, curveness:0.22, opacity:l.opacity }, data:linesData
+    }))});
+  }
 }
 
 /**
  * 粒子落地后：静态底线 + 逐个亮起目标节点
  * arrivalDelay: 粒子飞行结束到第一个节点显示的额外等待（ms），默认0
  */
-export async function revealTargets(chart, scatterData, linesData, colorMode) {
+export async function revealTargets(chart, scatterData, linesData, colorMode, opts = {}) {
+  const { nodeAnim = 'expand' } = opts;
+
   // 静态虚线底层
   chart.setOption({
     series: [
-      {
-        id: 'static-lines',
-        type: 'lines',
-        coordinateSystem: 'geo',
-        zlevel: 0,
-        lineStyle: {
-          color: 'rgba(184,255,71,0.18)',
-          width: 1,
-          curveness: 0.22,
-          type: [5, 9]
-        },
-        data: linesData
-      },
-      {
-        id: 'pulse-lines',
-        type: 'lines',
-        coordinateSystem: 'geo',
-        zlevel: 1,
-        effect: {
-          show: true, period: 1.4,
-          trailLength: 0.2,
-          color: '#b8ff47',
-          symbolSize: 2
-        },
-        lineStyle: { color: 'rgba(0,0,0,0)', width: 0, curveness: 0.22 },
-        data: linesData
-      }
+      { id:'static-lines', type:'lines', coordinateSystem:'geo', zlevel:0,
+        lineStyle:{ color:'rgba(184,255,71,0.18)', width:1, curveness:0.22, type:[5,9] }, data:linesData },
+      { id:'pulse-lines', type:'lines', coordinateSystem:'geo', zlevel:1,
+        effect:{ show:true, period:1.4, trailLength:0.2, color:'#b8ff47', symbolSize:2 },
+        lineStyle:{ color:'rgba(0,0,0,0)', width:0, curveness:0.22 }, data:linesData }
     ]
   });
-
-  // 粒子刚落地，稍等一拍再开始显示节点（让线条先稳定）
   await _sleep(120);
 
-  // 计算每个节点的目标大小，复用避免重复算
   const nodeInfos = scatterData.map(node => {
     const cluster = node.value[2];
     const memberCount = cluster.universities
@@ -116,60 +155,166 @@ export async function revealTargets(chart, scatterData, linesData, colorMode) {
     return { node, finalSize: Math.min(7 + memberCount * 2, 12) };
   });
 
-  // 注册所有节点：effectScatter size=0 opacity=0，涟漪与节点同时从零开始
-  chart.setOption({
-    series: nodeInfos.map(({ node, finalSize }, idx) => ({
-      id: `target-${idx}`,
-      type: 'effectScatter',
-      coordinateSystem: 'geo',
-      zlevel: 3,
-      symbol: 'circle',
-      symbolSize: 0,
-      animation: false,
-      data: [{ name: node.name, value: node.value,
-        itemStyle: { color: node.nodeColor, opacity: 0, shadowBlur: 0 } }],
-      showEffectOn: 'render',
-      rippleEffect: { brushType: 'stroke', scale: 2.5, period: 1.8 },
-      label: { show: false },
-    }))
-  });
+  if (nodeAnim === 'scanline')  return _animScanline(chart, nodeInfos);
+  if (nodeAnim === 'implode')   return _animImplode(chart, nodeInfos);
+  if (nodeAnim === 'flicker')   return _animFlicker(chart, nodeInfos);
+  if (nodeAnim === 'glitch')    return _animGlitch(chart, nodeInfos);
+  if (nodeAnim === 'cascade')   return _animCascade(chart, nodeInfos);
+  return _animExpand(chart, nodeInfos); // default: expand
+}
 
-  // easeOutBack: 贝塞尔曲线近似，轻微过冲后回弹，弹出感
-  const DURATION = 600, STAGGER = NODE_DELAY;
-  function easeOutBack(t) {
-    if (t >= 1) return 1;
-    const c1 = 1.70158, c3 = c1 + 1;
-    return 1 + c3 * Math.pow(t - 1, 3) + c1 * Math.pow(t - 1, 2);
+// ── 节点动画辅助函数 ─────────────────────────────────────────
+
+function _registerNodes(chart, nodeInfos, initSize = 0, initOp = 0) {
+  chart.setOption({ series: nodeInfos.map(({ node, finalSize }, idx) => ({
+    id:`target-${idx}`, type:'effectScatter', coordinateSystem:'geo', zlevel:3,
+    symbol:'circle', symbolSize:initSize||0.01, animation:false,
+    data:[{ name:node.name, value:node.value,
+      itemStyle:{ color:node.nodeColor, opacity:initOp, shadowBlur:0 } }],
+    showEffectOn:'render', rippleEffect:{ brushType:'stroke', scale:2.5, period:1.8 },
+    label:{ show:false },
+  }))});
+}
+
+function _easeOutBack(t) {
+  if (t >= 1) return 1;
+  const c1 = 1.70158, c3 = c1 + 1;
+  return 1 + c3 * Math.pow(t - 1, 3) + c1 * Math.pow(t - 1, 2);
+}
+
+function _rafLoop(nodeInfos, chart, getDelta, onDone) {
+  const t0 = performance.now();
+  function frame(now) {
+    const elapsed = now - t0;
+    const updates = []; let allDone = true;
+    nodeInfos.forEach((info, idx) => {
+      const u = getDelta(info, idx, elapsed);
+      if (u) { updates.push(u); if (u._pending) allDone = false; }
+    });
+    if (updates.length) chart.setOption({ series: updates.map(u => { delete u._pending; return u; }) });
+    if (!allDone) requestAnimationFrame(frame); else onDone();
   }
+  requestAnimationFrame(frame);
+}
 
-  // 每帧一次 setOption 批量更新所有节点，不依赖 ECharts 内置动画
-  await new Promise(resolve => {
-    const t0 = performance.now();
-    function frame(now) {
-      const elapsed = now - t0;
-      const updates = [];
-      let allDone = true;
-      nodeInfos.forEach(({ node, finalSize }, idx) => {
-        const nodeElapsed = elapsed - idx * STAGGER;
-        if (nodeElapsed < 0) { allDone = false; return; }
-        const t = Math.min(nodeElapsed / DURATION, 1);
-        if (t < 1) allDone = false;
-        const eased = easeOutBack(t);
-        const sz = Math.max(0.01, eased * finalSize);
-        const op = Math.min(t * 2.5, 1);
-        updates.push({
-          id: `target-${idx}`,
-          symbolSize: sz,
-          data: [{ name: node.name, value: node.value,
-            itemStyle: { color: node.nodeColor, opacity: op,
-              shadowBlur: op * 14, shadowColor: node.nodeColor } }],
-        });
-      });
-      if (updates.length) chart.setOption({ series: updates });
-      if (!allDone) requestAnimationFrame(frame); else resolve();
-    }
-    requestAnimationFrame(frame);
+// expand: 从中心放大 + easeOutBack (默认)
+async function _animExpand(chart, nodeInfos) {
+  _registerNodes(chart, nodeInfos);
+  const DURATION = 600, STAGGER = NODE_DELAY;
+  return new Promise(resolve => _rafLoop(nodeInfos, chart, ({ node, finalSize }, idx, elapsed) => {
+    const ne = elapsed - idx * STAGGER; if (ne < 0) return { _pending:true };
+    const t = Math.min(ne / DURATION, 1);
+    const sz = Math.max(0.01, _easeOutBack(t) * finalSize), op = Math.min(t * 2.5, 1);
+    return { id:`target-${idx}`, symbolSize:sz, _pending:t<1,
+      data:[{ name:node.name, value:node.value,
+        itemStyle:{ color:node.nodeColor, opacity:op, shadowBlur:op*14, shadowColor:node.nodeColor } }] };
+  }, resolve));
+}
+
+// scanline: 从北到南按纬度排序，逐行扫亮
+async function _animScanline(chart, nodeInfos) {
+  const order = [...nodeInfos.keys()].sort((a,b) => nodeInfos[b].node.value[1] - nodeInfos[a].node.value[1]);
+  _registerNodes(chart, nodeInfos);
+  const STAGGER = 60;
+  return new Promise(resolve => {
+    order.forEach((idx, rank) => {
+      const { node, finalSize } = nodeInfos[idx];
+      setTimeout(() => chart.setOption({ series:[{
+        id:`target-${idx}`, symbolSize:finalSize,
+        data:[{ name:node.name, value:node.value,
+          itemStyle:{ color:node.nodeColor, opacity:1, shadowBlur:14, shadowColor:node.nodeColor } }],
+      }]}), rank * STAGGER);
+    });
+    setTimeout(resolve, order.length * STAGGER + 300);
   });
+}
+
+// implode: 从外向内收缩至目标大小
+async function _animImplode(chart, nodeInfos) {
+  _registerNodes(chart, nodeInfos, 0);
+  const DURATION = 500, STAGGER = NODE_DELAY;
+  return new Promise(resolve => _rafLoop(nodeInfos, chart, ({ node, finalSize }, idx, elapsed) => {
+    const ne = elapsed - idx * STAGGER; if (ne < 0) return { _pending:true };
+    const t = Math.min(ne / DURATION, 1);
+    const eased = 1 - Math.pow(1 - t, 3);
+    const sz = Math.max(0.01, finalSize * 2 - eased * finalSize);
+    const op = Math.min(t * 2, 1);
+    return { id:`target-${idx}`, symbolSize:sz, _pending:t<1,
+      data:[{ name:node.name, value:node.value,
+        itemStyle:{ color:node.nodeColor, opacity:op, shadowBlur:op*14, shadowColor:node.nodeColor } }] };
+  }, resolve));
+}
+
+// flicker: 闪烁3次后稳定
+async function _animFlicker(chart, nodeInfos) {
+  _registerNodes(chart, nodeInfos, 0);
+  const STAGGER = NODE_DELAY;
+  const flickers = [0, 1, 0, 1, 0, 1, 0.4, 1];
+  const FRAME_MS = 60;
+  return new Promise(resolve => {
+    let done = 0;
+    nodeInfos.forEach(({ node, finalSize }, idx) => {
+      setTimeout(() => {
+        let frame = 0;
+        const iv = setInterval(() => {
+          const op = flickers[frame] ?? 1;
+          chart.setOption({ series:[{ id:`target-${idx}`, symbolSize: op > 0 ? finalSize : 0.01,
+            data:[{ name:node.name, value:node.value,
+              itemStyle:{ color:node.nodeColor, opacity:op, shadowBlur:op*14, shadowColor:node.nodeColor } }] }] });
+          frame++;
+          if (frame >= flickers.length) {
+            clearInterval(iv);
+            if (++done === nodeInfos.length) resolve();
+          }
+        }, FRAME_MS);
+      }, idx * STAGGER);
+    });
+  });
+}
+
+// glitch: 位置抖动后锁定
+async function _animGlitch(chart, nodeInfos) {
+  _registerNodes(chart, nodeInfos);
+  return new Promise(resolve => {
+    let done = 0;
+    nodeInfos.forEach(({ node, finalSize }, idx) => {
+      const [ox, oy] = node.value;
+      let step = 0; const steps = 8;
+      setTimeout(() => {
+        const iv = setInterval(() => {
+          const decay = 1 - step / steps;
+          const jx = (Math.random() - 0.5) * 1.2 * decay;
+          const jy = (Math.random() - 0.5) * 0.8 * decay;
+          const op = step / steps;
+          chart.setOption({ series:[{ id:`target-${idx}`, symbolSize:finalSize,
+            data:[{ name:node.name, value:[ox+jx, oy+jy, node.value[2]],
+              itemStyle:{ color:node.nodeColor, opacity:op, shadowBlur:op*14, shadowColor:node.nodeColor } }] }] });
+          step++;
+          if (step > steps) {
+            clearInterval(iv);
+            chart.setOption({ series:[{ id:`target-${idx}`, symbolSize:finalSize,
+              data:[{ name:node.name, value:node.value,
+                itemStyle:{ color:node.nodeColor, opacity:1, shadowBlur:14, shadowColor:node.nodeColor } }] }] });
+            if (++done === nodeInfos.length) resolve();
+          }
+        }, 55);
+      }, idx * NODE_DELAY);
+    });
+  });
+}
+
+// cascade: 按距离从近到远流水式（nodeInfos 已按距离排序）
+async function _animCascade(chart, nodeInfos) {
+  _registerNodes(chart, nodeInfos);
+  const DURATION = 400, STAGGER = 80;
+  return new Promise(resolve => _rafLoop(nodeInfos, chart, ({ node, finalSize }, idx, elapsed) => {
+    const ne = elapsed - idx * STAGGER; if (ne < 0) return { _pending:true };
+    const t = Math.min(ne / DURATION, 1);
+    const op = 1 - Math.pow(1 - t, 3);
+    return { id:`target-${idx}`, symbolSize:finalSize, _pending:t<1,
+      data:[{ name:node.name, value:node.value,
+        itemStyle:{ color:node.nodeColor, opacity:op, shadowBlur:op*14, shadowColor:node.nodeColor } }] };
+  }, resolve));
 }
 
 /**

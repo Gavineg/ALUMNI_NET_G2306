@@ -352,6 +352,42 @@ async function renderSettings(content) {
         </div>
       </div>
 
+      <div style="border-top:1px dashed var(--hud-border);padding-top:18px;margin-bottom:20px">
+        <div class="panel-title" style="font-size:12px;margin-bottom:16px">&gt; ANIMATION_STYLE</div>
+        <div class="field-group">
+          <label class="field-label">&gt; ORIGIN_ICON</label>
+          <select class="hud-input" id="cfg-icon">
+            <option value="diamond"   ${(settings.originIcon||'diamond')==='diamond'   ?'selected':''}>DIAMOND — 菱形（默认）</option>
+            <option value="crosshair" ${(settings.originIcon||'')==='crosshair'?'selected':''}>CROSSHAIR — 十字准星</option>
+            <option value="hexagon"   ${(settings.originIcon||'')==='hexagon'  ?'selected':''}>HEXAGON — 六边形</option>
+            <option value="target"    ${(settings.originIcon||'')==='target'   ?'selected':''}>TARGET — 靶心</option>
+            <option value="signal"    ${(settings.originIcon||'')==='signal'   ?'selected':''}>SIGNAL — 信号塔</option>
+          </select>
+        </div>
+        <div class="field-group">
+          <label class="field-label">&gt; LINE_ANIM</label>
+          <select class="hud-input" id="cfg-lineanim">
+            <option value="comet"  ${(settings.lineAnim||'comet')==='comet'  ?'selected':''}>COMET — 三层彗星（默认）</option>
+            <option value="pulse"  ${(settings.lineAnim||'')==='pulse'  ?'selected':''}>PULSE — 脉冲波</option>
+            <option value="laser"  ${(settings.lineAnim||'')==='laser'  ?'selected':''}>LASER — 直线闪射</option>
+            <option value="radar"  ${(settings.lineAnim||'')==='radar'  ?'selected':''}>RADAR — 雷达扫描</option>
+            <option value="ghost"  ${(settings.lineAnim||'')==='ghost'  ?'selected':''}>GHOST — 鬼影数据包</option>
+            <option value="matrix" ${(settings.lineAnim||'')==='matrix' ?'selected':''}>MATRIX — 矩阵数字流</option>
+          </select>
+        </div>
+        <div class="field-group">
+          <label class="field-label">&gt; NODE_ANIM</label>
+          <select class="hud-input" id="cfg-nodeanim">
+            <option value="expand"   ${(settings.nodeAnim||'expand')==='expand'  ?'selected':''}>EXPAND — 从中心放大（默认）</option>
+            <option value="scanline" ${(settings.nodeAnim||'')==='scanline'?'selected':''}>SCANLINE — 扫描线从北到南</option>
+            <option value="implode"  ${(settings.nodeAnim||'')==='implode' ?'selected':''}>IMPLODE — 从外向内收缩</option>
+            <option value="flicker"  ${(settings.nodeAnim||'')==='flicker' ?'selected':''}>FLICKER — 闪烁三次后稳定</option>
+            <option value="glitch"   ${(settings.nodeAnim||'')==='glitch'  ?'selected':''}>GLITCH — 故障抖动后锁定</option>
+            <option value="cascade"  ${(settings.nodeAnim||'')==='cascade' ?'selected':''}>CASCADE — 由近及远流水式</option>
+          </select>
+        </div>
+      </div>
+
       <button class="hud-btn full" id="cfg-save-btn">[SAVE_SETTINGS]</button>
       <div class="msg" id="cfg-msg"></div>
     </div>
@@ -395,7 +431,10 @@ async function renderSettings(content) {
       originLon:    content.querySelector('#cfg-olon').value.trim(),
       originLat:    content.querySelector('#cfg-olat').value.trim(),
       colorMode:    content.querySelector('#cfg-cmode').value,
-      unifiedColor: content.querySelector('#cfg-ucolor').value.trim()
+      unifiedColor: content.querySelector('#cfg-ucolor').value.trim(),
+      originIcon:   content.querySelector('#cfg-icon').value,
+      lineAnim:     content.querySelector('#cfg-lineanim').value,
+      nodeAnim:     content.querySelector('#cfg-nodeanim').value,
     };
     const res = await apiFetch('/api/admin/settings', { method: 'PUT', body: JSON.stringify(payload) });
     const msg = content.querySelector('#cfg-msg');

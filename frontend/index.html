@@ -118,7 +118,10 @@
       subEl.textContent = '';
       await typeWrite(subEl, 'LAUNCHING TRACER SWARM...', 12);
 
-      launchParticles(chart, mapData.originCoords, mapData.linesData, FLIGHT_TIME);
+      launchParticles(chart, mapData.originCoords, mapData.linesData, FLIGHT_TIME, {
+        originIcon: mapData.originIcon,
+        lineAnim:   mapData.lineAnim
+      });
 
       await sleep(FLIGHT_TIME + 200);
 
@@ -129,7 +132,9 @@
       await typeWrite(subEl, 'SIGNAL LOCKING TARGETS...', 12);
 
       lastMapData = mapData;
-      await revealTargets(chart, mapData.scatterData, mapData.linesData, mapData.colorMode);
+      await revealTargets(chart, mapData.scatterData, mapData.linesData, mapData.colorMode, {
+        nodeAnim: mapData.nodeAnim
+      });
 
       subEl.textContent = '';
       await typeWrite(subEl, 'ALL TARGETS LOCKED. SYSTEM READY.', 12);

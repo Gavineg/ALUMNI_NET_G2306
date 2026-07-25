@@ -6,7 +6,10 @@ const SETTINGS_DEFAULTS = {
   unifiedColor: '#b8ff47',
   originName:   'SHENZHEN_LONGGANG',
   originLon:    '114.247',
-  originLat:    '22.723'
+  originLat:    '22.723',
+  originIcon:   'diamond',
+  lineAnim:     'comet',
+  nodeAnim:     'expand'
 };
 
 function json(data, status = 200) {
@@ -55,6 +58,9 @@ export async function mapData(db) {
     },
     colorMode:    settingsMap.colorMode,
     unifiedColor: settingsMap.unifiedColor,
+    originIcon:   settingsMap.originIcon,
+    lineAnim:     settingsMap.lineAnim,
+    nodeAnim:     settingsMap.nodeAnim,
     universities: Object.values(uniMap)
   });
 }
@@ -236,7 +242,7 @@ export async function updateSettings(request, db) {
   const body = await request.json().catch(() => null);
   if (!body) return json({ error: 'invalid json' }, 400);
 
-  const allowed = ['colorMode', 'unifiedColor', 'originName', 'originLon', 'originLat'];
+  const allowed = ['colorMode', 'unifiedColor', 'originName', 'originLon', 'originLat', 'originIcon', 'lineAnim', 'nodeAnim'];
   for (const k of allowed) {
     if (k in body) {
       await db.set('settings', k, { value: String(body[k]) });

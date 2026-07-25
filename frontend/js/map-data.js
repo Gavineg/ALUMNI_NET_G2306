@@ -65,7 +65,10 @@ function buildMapResult(data) {
     Math.hypot(b.value[0] - ox, b.value[1] - oy)
   );
 
-  return { origin, originCoords, universities, colorMode, unifiedColor, scatterData, linesData };
+  return { origin, originCoords, universities, colorMode, unifiedColor, scatterData, linesData,
+           originIcon: data.originIcon || 'diamond',
+           lineAnim:   data.lineAnim   || 'comet',
+           nodeAnim:   data.nodeAnim   || 'expand' };
 }
 
 /**
