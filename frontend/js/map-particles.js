@@ -76,7 +76,11 @@ function _cometCanvas(chart, linesData, scatterData, flightTime) {
   });
 
   const arrived = new Array(linesData.length).fill(false);
-  const TRAIL = 0.25; // 拖尾占路径比例
+  const TRAIL = 0.25;
+  const MAX_DELAY = 400; // 最大出发延迟 ms
+  // 每条线随机出发延迟，每次刷新不同
+  const delays = linesData.map(() => Math.random() * MAX_DELAY);
+  const totalDuration = flightTime + MAX_DELAY;
 
   function resize() {
     cvs.width  = container.offsetWidth;
@@ -90,11 +94,17 @@ function _cometCanvas(chart, linesData, scatterData, flightTime) {
 
   return new Promise(resolve => {
     function frame(now) {
-      const t = Math.min((now - startTime) / flightTime, 1);
+      const elapsed = now - startTime;
       const w = cvs.width, h = cvs.height;
       ctx.clearRect(0, 0, w, h);
 
+      const allDone = elapsed >= totalDuration;
       linesData.forEach((line, i) => {
+        // 每条线有自己的进度 t，出发延迟不同
+        const lineElapsed = elapsed - delays[i];
+        if (lineElapsed <= 0) return; // 还没出发
+        const t = Math.min(lineElapsed / flightTime, 1);
+
         const [ox, oy] = chart.convertToPixel('geo', line.coords[0]);
         const [ex, ey] = chart.convertToPixel('geo', line.coords[1]);
         const [cx, cy] = _bezierCtrl(ox, oy, ex, ey);
@@ -117,27 +127,28 @@ function _cometCanvas(chart, linesData, scatterData, flightTime) {
         ctx.restore();
 
         // 流光：前端亮、后端暗，无尖锐头部，纯绿渐变
-        const tailStart = Math.max(0, t - TRAIL);
-        const TAIL_STEPS = 24;
-        for (let s = 0; s < TAIL_STEPS; s++) {
-          const ta = tailStart + (t - tailStart) * (s / TAIL_STEPS);
-          const tb = tailStart + (t - tailStart) * ((s + 1) / TAIL_STEPS);
-          // 前端（s接近TAIL_STEPS）亮，后端（s=0）暗
-          const frac = (s + 1) / TAIL_STEPS;
-          const alpha = frac * frac * 0.95; // 二次曲线，前亮后暗
-          const width = 1.2 + frac * 2.0;
-          const [ax, ay] = _bezierPt(ox, oy, cx, cy, ex, ey, ta);
-          const [bx, by] = _bezierPt(ox, oy, cx, cy, ex, ey, tb);
-          ctx.save();
-          ctx.strokeStyle = `rgba(184,255,71,${alpha.toFixed(3)})`;
-          ctx.lineWidth = width;
-          ctx.shadowBlur = frac * 8;
-          ctx.shadowColor = '#b8ff47';
-          ctx.beginPath();
-          ctx.moveTo(ax, ay);
-          ctx.lineTo(bx, by);
-          ctx.stroke();
-          ctx.restore();
+        if (t < 1) {
+          const tailStart = Math.max(0, t - TRAIL);
+          const TAIL_STEPS = 24;
+          for (let s = 0; s < TAIL_STEPS; s++) {
+            const ta = tailStart + (t - tailStart) * (s / TAIL_STEPS);
+            const tb = tailStart + (t - tailStart) * ((s + 1) / TAIL_STEPS);
+            const frac = (s + 1) / TAIL_STEPS;
+            const alpha = frac * frac * 0.95;
+            const width = 1.2 + frac * 2.0;
+            const [ax, ay] = _bezierPt(ox, oy, cx, cy, ex, ey, ta);
+            const [bx, by] = _bezierPt(ox, oy, cx, cy, ex, ey, tb);
+            ctx.save();
+            ctx.strokeStyle = `rgba(184,255,71,${alpha.toFixed(3)})`;
+            ctx.lineWidth = width;
+            ctx.shadowBlur = frac * 8;
+            ctx.shadowColor = '#b8ff47';
+            ctx.beginPath();
+            ctx.moveTo(ax, ay);
+            ctx.lineTo(bx, by);
+            ctx.stroke();
+            ctx.restore();
+          }
         }
 
         // 到达终点：触发节点亮起
@@ -148,13 +159,12 @@ function _cometCanvas(chart, linesData, scatterData, flightTime) {
         }
       });
 
-      if (t < 1) {
+      if (!allDone) {
         rafId = requestAnimationFrame(frame);
       } else {
         cancelAnimationFrame(rafId);
         window.removeEventListener('resize', resize);
-        // 保留 Canvas 虚线，停止动画
-        // 彗星头消失：重绘一次只保留虚线
+        // 重绘一次只保留完整虚线
         ctx.clearRect(0, 0, cvs.width, cvs.height);
         linesData.forEach((line) => {
           const [ox, oy] = chart.convertToPixel('geo', line.coords[0]);
