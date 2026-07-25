@@ -76,6 +76,8 @@ function _cometCanvas(chart, linesData, scatterData, flightTime) {
   });
 
   const arrived = new Array(linesData.length).fill(false);
+  let arrivalCount = 0; // 已到达节点数，用于错开延迟
+  const ARRIVAL_STAGGER = 60; // ms，相邻到达节点间隔
   const TRAIL = 0.25;
   const MAX_DELAY = 400; // 最大出发延迟 ms
   // 每条线随机出发延迟，每次刷新不同
@@ -151,11 +153,12 @@ function _cometCanvas(chart, linesData, scatterData, flightTime) {
           }
         }
 
-        // 到达终点：触发节点亮起
+        // 到达终点：触发节点亮起，错开延迟防卡顿
         if (t >= 1 && !arrived[i]) {
           arrived[i] = true;
           const info = nodeInfos[i];
-          if (info) _revealOneNode(chart, info, i);
+          if (info) _revealOneNode(chart, info, i, arrivalCount * ARRIVAL_STAGGER);
+          arrivalCount++;
         }
       });
 
@@ -191,27 +194,29 @@ function _cometCanvas(chart, linesData, scatterData, flightTime) {
   });
 }
 
-// 单个节点 easeOutBack 亮起
-function _revealOneNode(chart, { node, finalSize }, idx) {
-  const DURATION = 400;
-  const t0 = performance.now();
-  function frame(now) {
-    const t = Math.min((now - t0) / DURATION, 1);
-    const sz = Math.max(0.01, _easeOutBack(t) * finalSize);
-    const op = Math.min(t * 2.5, 1);
-    chart.setOption({ series: [{
-      id: `target-${idx}`, type: 'effectScatter', coordinateSystem: 'geo', zlevel: 3,
-      symbol: 'circle', symbolSize: sz, animation: false,
-      data: [{ name: node.name, value: node.value,
-        itemStyle: { color: node.nodeColor, opacity: op,
-          shadowBlur: op * 14, shadowColor: node.nodeColor } }],
-      showEffectOn: 'render',
-      rippleEffect: { brushType: 'stroke', scale: 2.5, period: 1.8 },
-      label: { show: false },
-    }]});
-    if (t < 1) requestAnimationFrame(frame);
-  }
-  requestAnimationFrame(frame);
+// 单个节点 easeOutBack 亮起，delay ms 后开始
+function _revealOneNode(chart, { node, finalSize }, idx, delay = 0) {
+  const DURATION = 700;
+  setTimeout(() => {
+    const t0 = performance.now();
+    function frame(now) {
+      const t = Math.min((now - t0) / DURATION, 1);
+      const sz = Math.max(0.01, _easeOutBack(t) * finalSize);
+      const op = Math.min(t * 2, 1);
+      chart.setOption({ series: [{
+        id: `target-${idx}`, type: 'effectScatter', coordinateSystem: 'geo', zlevel: 3,
+        symbol: 'circle', symbolSize: sz, animation: false,
+        data: [{ name: node.name, value: node.value,
+          itemStyle: { color: node.nodeColor, opacity: op,
+            shadowBlur: op * 14, shadowColor: node.nodeColor } }],
+        showEffectOn: 'render',
+        rippleEffect: { brushType: 'stroke', scale: 2.5, period: 1.8 },
+        label: { show: false },
+      }]});
+      if (t < 1) requestAnimationFrame(frame);
+    }
+    requestAnimationFrame(frame);
+  }, delay);
 }
 
 function _doLineAnim(chart, linesData, flightTime, style) {
