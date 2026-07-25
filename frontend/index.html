@@ -44,7 +44,7 @@
     import { glitchResolve, typeWrite, sleep, abortBios } from './js/boot.js';
     import { fetchMapData } from './js/map-data.js';
     import { launchParticles, revealTargets, startNoiseLayer } from './js/map-particles.js';
-    import { initMapUI, closePanel, openPanel, clearTerminal, flyToCoord } from './js/map-ui.js';
+    import { initMapUI, closePanel, openPanel, clearTerminal, flyToCoord, handleCloseBtn } from './js/map-ui.js';
     import { runCommand, restoreTheme, getPromptPrefix } from './js/terminal-cmd.js';
     import { biosAppend } from './js/boot.js';
 
@@ -192,12 +192,11 @@
     };
 
     document.getElementById('close-btn').addEventListener('click', () => {
-      // 如果是全屏模式，EXIT 还原地图
       const panel = document.getElementById('info-panel');
       if (panel.classList.contains('fullscreen')) {
         setFullscreen(false);
       } else {
-        closePanel();
+        handleCloseBtn();
       }
     });
     window.addEventListener('resize', () => chart.resize());

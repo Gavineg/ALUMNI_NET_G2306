@@ -140,6 +140,7 @@ function helpLines() {
     L('    portal          — open student/admin dashboard (auto-login)'),
     L('    cd <path>       — navigate virtual directories (C:\\G2306\\<username>)'),
     L('    reinstall       — restore deleted tools and reset local filesystem'),
+    L('    reboot          — force reload page from server (clears cache)'),
     L(''),
     L('  [ RECON ]'),
     L('    whoami          — show current user'),
@@ -384,11 +385,20 @@ export async function runCommand(raw, ctx) {
     lines.push(L('> TYPE "EXIT" TO RETURN TO MAP'));
     return lines;
   }
-  // —— SYSTEM REBOOT ——————————————————————————————————————————
-  if(cmd==reboot){
-    const lines = [L('> Broadcast message from root@localhost'), L('> (/dev/pts/0) at '+new Date().toString().toUpperCase()+'...'), L('> The system is going down for reboot NOW!')];
-    lines.push(L(''));
-    location.reload(true);
+  if (cmd === 'reboot') {
+    const lines = [
+      L('> Broadcast message from root@localhost'),
+      L(`> (/dev/pts/0) at ${new Date().toString().toUpperCase()}...`),
+      L('> The system is going down for reboot NOW!'),
+      L(''),
+    ];
+    // print lines then reload after short delay
+    setTimeout(() => {
+      sessionStorage.removeItem('g2306_map_cache');
+      // cache-bust: append timestamp so browser fetches fresh from server
+      window.location.href = window.location.pathname + '?_=' + Date.now();
+    }, 1200);
+    return lines;
   }
 
 

@@ -11,29 +11,61 @@ let chartRef       = null;
 let initZoomRef    = null;
 let initCenterRef  = null;
 
+// 导航栈：记录每层的回调，用于 BACK 按钮
+let navStack = [];
+
+// 节流：连续点击只响应最后一次
+let clickThrottle = null;
+
+function updateCloseBtn() {
+  const btn = document.getElementById('close-btn');
+  if (!btn) return;
+  // 全屏时由 setFullscreen 控制文字，不干预
+  const panel = document.getElementById('info-panel');
+  if (panel?.classList.contains('fullscreen')) return;
+  btn.textContent = navStack.length > 0 ? '[BACK]' : '[ABORT]';
+}
+
+export function handleCloseBtn() {
+  const panel = document.getElementById('info-panel');
+  if (panel?.classList.contains('fullscreen')) return false; // 让 index.html 处理全屏退出
+  if (navStack.length > 0) {
+    const prev = navStack.pop();
+    updateCloseBtn();
+    prev();
+    return true;
+  }
+  navStack = [];
+  closePanel();
+  return true;
+}
+
 export function initMapUI(chart, initZoom, initCenter) {
   chartRef      = chart;
   initZoomRef   = initZoom;
   initCenterRef = initCenter;
 
-  chart.on('click', async params => {
+  chart.on('click', params => {
     if (!params.seriesId?.startsWith('target-')) {
+      navStack = [];
       closePanel();
       return;
     }
 
-    const cluster = params.data.value[2]; // ClusterGroup 对象
-
-    if (cluster.universities?.length > 1) {
-      // 集群点：显示城市选择
-      await showCityMenu(cluster);
-    } else if (cluster.universities?.length === 1) {
-      // 单个集群（只有一所大学）
-      await showStudentInfo([cluster.universities[0]]);
-    } else {
-      // 非集群结构（兼容旧格式）
-      await showStudentInfo([cluster]);
-    }
+    // 节流：100ms 内连续点只取最后一次
+    if (clickThrottle) clearTimeout(clickThrottle);
+    clickThrottle = setTimeout(() => {
+      clickThrottle = null;
+      const cluster = params.data.value[2];
+      navStack = [];
+      if (cluster.universities?.length > 1) {
+        showCityMenu(cluster);
+      } else if (cluster.universities?.length === 1) {
+        showStudentInfo([cluster.universities[0]]);
+      } else {
+        showStudentInfo([cluster]);
+      }
+    }, 100);
   });
 }
 
@@ -47,8 +79,8 @@ async function showCityMenu(cluster) {
   const terminal = document.getElementById('terminal-content');
   panel.classList.add('active');
   terminal.innerHTML = '';
+  updateCloseBtn();
 
-  // 按城市分组
   const cityMap = {};
   for (const u of cluster.universities) {
     const city = u.city || '未知';
@@ -70,7 +102,6 @@ async function showCityMenu(cluster) {
 
   if (session !== currentSession) return;
 
-  // 渲染可点击的城市按钮
   for (let i = 0; i < cities.length; i++) {
     if (session !== currentSession) return;
     const city = cities[i];
@@ -81,6 +112,8 @@ async function showCityMenu(cluster) {
     div.innerHTML = `<span style="color:var(--hud-text-dim)">[${String(i+1).padStart(2,'0')}]</span> ${city} <span style="color:var(--hud-text-dim)">(${count} INST)</span>`;
     div.addEventListener('click', () => {
       if (session !== currentSession) return;
+      navStack.push(() => showCityMenu(cluster));
+      updateCloseBtn();
       showUniMenu(cityMap[city], city);
     });
     terminal.appendChild(div);
@@ -102,6 +135,7 @@ async function showUniMenu(unis, cityName) {
 
   const terminal = document.getElementById('terminal-content');
   terminal.innerHTML = '';
+  updateCloseBtn();
 
   const safe = async lines => {
     if (session !== currentSession) return;
@@ -126,6 +160,8 @@ async function showUniMenu(unis, cityName) {
     div.innerHTML = `<span style="color:var(--hud-text-dim)">[${String(i+1).padStart(2,'0')}]</span> ${u.university}`;
     div.addEventListener('click', () => {
       if (session !== currentSession) return;
+      navStack.push(() => showUniMenu(unis, cityName));
+      updateCloseBtn();
       showStudentInfo([u]);
     });
     terminal.appendChild(div);
@@ -134,13 +170,6 @@ async function showUniMenu(unis, cityName) {
   }
 
   if (session !== currentSession) return;
-
-  // 返回按钮
-  const back = document.createElement('div');
-  back.style.cssText = 'cursor:pointer;padding:6px 0 0;color:var(--hud-text-dim);';
-  back.textContent = '> [BACK]';
-  back.addEventListener('click', () => showCityMenu({ universities: unis.reduce((all, u) => all.concat([u]), []) }));
-  terminal.appendChild(back);
 
   const cur = document.createElement('span');
   cur.className = 'terminal-cursor';
@@ -157,6 +186,7 @@ async function showStudentInfo(unis) {
   const terminal = document.getElementById('terminal-content');
   panel.classList.add('active');
   terminal.innerHTML = '';
+  updateCloseBtn();
 
   const safe = async lines => {
     if (session !== currentSession) return;
@@ -207,6 +237,7 @@ export function flyToCoord(lon, lat) {
 
 export async function closePanel() {
   abortBios();
+  navStack = [];
   const panel = document.getElementById('info-panel');
   if (!panel.classList.contains('active')) return;
 
