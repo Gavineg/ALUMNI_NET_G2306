@@ -266,11 +266,12 @@ function _nodeAnimTick(now) {
     _nodeAnimRaf = requestAnimationFrame(_nodeAnimTick);
   } else {
     _nodeAnimRaf = null;
-    // 动画全部完成后，叠加透明大圆扩大手机点击区域
+    // 动画全部完成后，叠加透明大圆扩大点击区域（手机端更大）
     if (chart && updates.length) {
+      const hitMult = (window.innerWidth < 768 || 'ontouchstart' in window) ? 5 : 3.5;
       chart.setOption({ series: updates.map(u => ({
         id: `target-hit-${u.id.replace('target-', '')}`, type: 'effectScatter', coordinateSystem: 'geo', zlevel: 3,
-        symbol: 'circle', symbolSize: u.symbolSize * 3.5, animation: false,
+        symbol: 'circle', symbolSize: u.symbolSize * hitMult, animation: false,
         data: u.data.map(d => ({ ...d, itemStyle: { color: 'transparent', opacity: 0 } })),
         showEffectOn: 'render', rippleEffect: { scale: 0 }, label: { show: false },
       })) });
@@ -854,12 +855,15 @@ export function startNoiseLayer() {
   const canvas = document.getElementById('noise-canvas');
   if (!canvas) return;
 
+  const mobile = window.innerWidth < 768 || 'ontouchstart' in window;
+  const fps_interval = mobile ? 100 : 48;
+
   // ── Worker path (Chrome / Firefox / Safari 16.4+) ─────────────
   if (typeof canvas.transferControlToOffscreen === 'function') {
     const w = window.innerWidth, h = window.innerHeight;
     const offscreen = canvas.transferControlToOffscreen();
     const worker = new Worker(new URL('./noise-worker.js', import.meta.url));
-    worker.postMessage({ type: 'init', canvas: offscreen, w, h }, [offscreen]);
+    worker.postMessage({ type: 'init', canvas: offscreen, w, h, mobile }, [offscreen]);
     const onResize = () =>
       worker.postMessage({ type: 'resize', w: window.innerWidth, h: window.innerHeight });
     window.addEventListener('resize', onResize);
@@ -877,7 +881,7 @@ export function startNoiseLayer() {
   window.addEventListener('resize', resize);
   let frame, last = 0;
   function draw(ts) {
-    if (ts - last > 48) {
+    if (ts - last > fps_interval) {
       last = ts;
       const w = canvas.width, h = canvas.height;
       const img = ctx.createImageData(w, h);

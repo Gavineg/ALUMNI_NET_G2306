@@ -52,9 +52,31 @@
     // 恢复上次会话的主题（在任何 DOM 操作前）
     restoreTheme();
 
-    const isMobile    = window.innerWidth < 768;
-    const initZoom    = isMobile ? 1.8 : 1.2;
-    const initCenter  = isMobile ? [105.0, 32.0] : [104.2, 35.9];
+    const isMobile    = window.innerWidth < 768 || 'ontouchstart' in window;
+    let   initZoom    = isMobile ? 1.4 : 1.2;
+    let   initCenter  = isMobile ? [105.0, 35.0] : [104.2, 35.9];
+
+    // 手机端：数据加载后根据节点 bbox 自动计算最优视角
+    function calcMobileView(scatterData, originCoords) {
+      const lons = [originCoords[0], ...scatterData.map(n => n.value[0])];
+      const lats = [originCoords[1], ...scatterData.map(n => n.value[1])];
+      const minLon = Math.min(...lons), maxLon = Math.max(...lons);
+      const minLat = Math.min(...lats), maxLat = Math.max(...lats);
+      // bbox 中心
+      const centerLon = (minLon + maxLon) / 2;
+      const centerLat = (minLat + maxLat) / 2;
+      // 参考桌面 zoom=1.2 时容器能显示约 50°经度范围，手机宽度约一半
+      // 用 bbox 宽度推算需要的 zoom，加 15% padding
+      const dom = chart.getDom();
+      const aspect = dom.offsetWidth / dom.offsetHeight;
+      const lonSpan = (maxLon - minLon) * 1.15;
+      const latSpan = (maxLat - minLat) * 1.15;
+      // ECharts china map 在 zoom=1 时约覆盖 60°lon × 45°lat
+      const zoomByLon = 60 / lonSpan;
+      const zoomByLat = (45 * aspect) / latSpan;
+      const zoom = Math.min(zoomByLon, zoomByLat, 4.5); // 上限 4.5 防止过度放大
+      return { center: [centerLon, centerLat], zoom: Math.max(zoom, 0.8) };
+    }
 
     const chart       = echarts.init(document.getElementById('map-container'));
     const headerEl    = document.getElementById('header-text');
@@ -117,6 +139,14 @@
       await glitchResolve(headerEl, '[G2306] CHUANG XIN BASE', 140, 12);
       subEl.textContent = '';
       await typeWrite(subEl, 'LAUNCHING TRACER SWARM...', 12);
+
+      // 手机端：用节点 bbox 覆盖初始视角，然后重新应用地图配置
+      if (isMobile) {
+        const mv = calcMobileView(mapData.scatterData, mapData.originCoords);
+        initZoom   = mv.zoom;
+        initCenter = mv.center;
+        chart.setOption({ geo: { zoom: initZoom, center: initCenter } }, { silent: true });
+      }
 
       // comet 模式：await Canvas 动画完成（所有节点亮起后 resolve）
       // rotary 模式：出发点 ripple 稍作停顿
