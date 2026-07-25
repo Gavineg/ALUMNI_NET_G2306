@@ -219,8 +219,23 @@ function _cometCanvas(chart, linesData, scatterData, flightTime) {
         redrawDashes();
         chart.on('georoam', redrawDashes);
         window.addEventListener('resize', redrawDashes);
-        // 暴露给外部（resetMap 动画期间复用）
         cvs._redrawDashes = redrawDashes;
+
+        // 注册透明大圆作为 click hit area（视觉节点在 ECharts target-* 系列）
+        const hitMult = (window.innerWidth < 768 || 'ontouchstart' in window) ? 5 : 3.5;
+        const hitSeries = linesData.map((_, i) => {
+          const info = lineToNodeInfo[i];
+          if (!info) return null;
+          return {
+            id: `target-hit-${info.nodeIdx}`, type: 'effectScatter', coordinateSystem: 'geo', zlevel: 5,
+            symbol: 'circle', symbolSize: info.finalSize * hitMult, animation: false,
+            data: [{ name: info.node.name, value: info.node.value,
+              itemStyle: { color: 'transparent', opacity: 0 } }],
+            showEffectOn: 'render', rippleEffect: { scale: 0 }, label: { show: false },
+          };
+        }).filter(Boolean);
+        if (hitSeries.length) chart.setOption({ series: hitSeries });
+
         resolve();
       }
     }
