@@ -190,26 +190,35 @@ function _cometCanvas(chart, linesData, scatterData, flightTime) {
       } else {
         cancelAnimationFrame(rafId);
         window.removeEventListener('resize', resize);
-        // 重绘一次只保留完整虚线
-        ctx.clearRect(0, 0, cvs.width, cvs.height);
-        linesData.forEach((line) => {
-          const [ox, oy] = chart.convertToPixel('geo', line.coords[0]);
-          const [ex, ey] = chart.convertToPixel('geo', line.coords[1]);
-          const [cx, cy] = _bezierCtrl(ox, oy, ex, ey);
-          ctx.save();
-          ctx.setLineDash([4, 7]);
-          ctx.strokeStyle = 'rgba(184,255,71,0.38)';
-          ctx.lineWidth = 1;
-          ctx.beginPath();
-          const [sx, sy] = _bezierPt(ox, oy, cx, cy, ex, ey, 0);
-          ctx.moveTo(sx, sy);
-          for (let s = 1; s <= 40; s++) {
-            const [px, py] = _bezierPt(ox, oy, cx, cy, ex, ey, s / 40);
-            ctx.lineTo(px, py);
-          }
-          ctx.stroke();
-          ctx.restore();
-        });
+
+        // 抽出静态虚线重绘函数，供 georoam/resize 复用
+        function redrawDashes() {
+          cvs.width  = container.offsetWidth;
+          cvs.height = container.offsetHeight;
+          ctx.clearRect(0, 0, cvs.width, cvs.height);
+          linesData.forEach(line => {
+            const [ox, oy] = chart.convertToPixel('geo', line.coords[0]);
+            const [ex, ey] = chart.convertToPixel('geo', line.coords[1]);
+            const [cx, cy] = _bezierCtrl(ox, oy, ex, ey);
+            ctx.save();
+            ctx.setLineDash([4, 7]);
+            ctx.strokeStyle = 'rgba(184,255,71,0.38)';
+            ctx.lineWidth = 1;
+            ctx.beginPath();
+            const [sx, sy] = _bezierPt(ox, oy, cx, cy, ex, ey, 0);
+            ctx.moveTo(sx, sy);
+            for (let s = 1; s <= 40; s++) {
+              const [px, py] = _bezierPt(ox, oy, cx, cy, ex, ey, s / 40);
+              ctx.lineTo(px, py);
+            }
+            ctx.stroke();
+            ctx.restore();
+          });
+        }
+
+        redrawDashes();
+        chart.on('georoam', redrawDashes);
+        window.addEventListener('resize', redrawDashes);
         resolve();
       }
     }
