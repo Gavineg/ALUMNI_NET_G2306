@@ -20,24 +20,37 @@ const ICON_COLOR = { color: '#ff4b1f', shadowBlur: 24, shadowColor: 'rgba(255,75
 export function launchParticles(chart, originCoords, linesData, scatterData, flightTime, opts = {}) {
   const { originIcon = 'diamond', lineAnim = 'comet' } = opts;
   const symbol = ORIGIN_ICONS[originIcon] || ORIGIN_ICONS.diamond;
+  const finalSize = originIcon === 'crosshair' ? 22 : 16;
 
-  // 出发点图标
-  chart.setOption({
-    series: [{
-      id: 'origin', type: 'effectScatter', coordinateSystem: 'geo', zlevel: 4,
-      symbol, symbolSize: originIcon === 'crosshair' ? 22 : 16,
-      data: [{ name: 'ORIGIN', value: originCoords }],
-      showEffectOn: 'render',
-      rippleEffect: { brushType: 'stroke', scale: 3, period: 2 },
-      itemStyle: ICON_COLOR, label: { show: false }
-    }]
-  });
+  // 出发点图标：从 size=0 渐扩到目标大小，easeOutBack
+  _animOrigin(chart, symbol, originCoords, finalSize);
 
   if (lineAnim === 'comet') {
     return _cometCanvas(chart, linesData, scatterData, flightTime);
   }
   _doLineAnim(chart, linesData, flightTime, lineAnim);
   return Promise.resolve();
+}
+
+// 出发点图标出现动画：从 0 easeOutBack 扩到目标大小
+function _animOrigin(chart, symbol, originCoords, finalSize) {
+  const DURATION = 500;
+  const t0 = performance.now();
+  function frame(now) {
+    const t = Math.min((now - t0) / DURATION, 1);
+    const sz = Math.max(0.01, _easeOutBack(t) * finalSize);
+    const op = Math.min(t * 3, 1);
+    chart.setOption({ series: [{
+      id: 'origin', type: 'effectScatter', coordinateSystem: 'geo', zlevel: 4,
+      symbol, symbolSize: sz, animation: false,
+      data: [{ name: 'ORIGIN', value: originCoords }],
+      showEffectOn: 'render',
+      rippleEffect: { brushType: 'stroke', scale: 3, period: 2 },
+      itemStyle: { ...ICON_COLOR, opacity: op }, label: { show: false }
+    }]});
+    if (t < 1) requestAnimationFrame(frame);
+  }
+  requestAnimationFrame(frame);
 }
 
 // ── Canvas 彗星（comet 模式专用）────────────────────────────
