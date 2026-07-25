@@ -20,7 +20,7 @@ const ICON_COLOR = { color: '#ff4b1f', shadowBlur: 24, shadowColor: 'rgba(255,75
 export function launchParticles(chart, originCoords, linesData, scatterData, flightTime, opts = {}) {
   const { originIcon = 'diamond', lineAnim = 'comet' } = opts;
   const symbol = ORIGIN_ICONS[originIcon] || ORIGIN_ICONS.diamond;
-  const finalSize = originIcon === 'crosshair' ? 22 : 16;
+  const finalSize = originIcon === 'crosshair' ? 18 : 12;
 
   // 出发点图标：从 size=0 渐扩到目标大小，easeOutBack
   _animOrigin(chart, symbol, originCoords, finalSize);
@@ -266,6 +266,15 @@ function _nodeAnimTick(now) {
     _nodeAnimRaf = requestAnimationFrame(_nodeAnimTick);
   } else {
     _nodeAnimRaf = null;
+    // 动画全部完成后，叠加透明大圆扩大手机点击区域
+    if (chart && updates.length) {
+      chart.setOption({ series: updates.map(u => ({
+        id: `target-hit-${u.id.replace('target-', '')}`, type: 'effectScatter', coordinateSystem: 'geo', zlevel: 3,
+        symbol: 'circle', symbolSize: u.symbolSize * 3.5, animation: false,
+        data: u.data.map(d => ({ ...d, itemStyle: { color: 'transparent', opacity: 0 } })),
+        showEffectOn: 'render', rippleEffect: { scale: 0 }, label: { show: false },
+      })) });
+    }
   }
 }
 

@@ -73,7 +73,7 @@ function helpLines() {
   return [
     L('  [ ???? ]'),
     L('    help            — show this help'),
-    L('    reboot          — reload page'),
+    L('    reboot [-f]     — reload page; -f clears cache'),
     L('    date            — show current date/time'),
     L('    whoami          — show current user'),
     L('    stats           — cohort statistics'),
