@@ -238,7 +238,7 @@ async function _fadeOutComets(chart, linesData, lineAnim) {
   });
 }
 
-
+function _registerNodes(chart, nodeInfos, initSize = 0, initOp = 0) {
   chart.setOption({ series: nodeInfos.map(({ node, finalSize }, idx) => ({
     id:`target-${idx}`, type:'effectScatter', coordinateSystem:'geo', zlevel:3,
     symbol:'circle', symbolSize:initSize||0.01, animation:false,
