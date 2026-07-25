@@ -76,13 +76,16 @@ function _cometCanvas(chart, linesData, scatterData, flightTime) {
   });
 
   const arrived = new Array(linesData.length).fill(false);
-  let arrivalCount = 0; // 已到达节点数，用于错开延迟
-  const ARRIVAL_STAGGER = 60; // ms，相邻到达节点间隔
   const TRAIL = 0.25;
   const MAX_DELAY = 400; // 最大出发延迟 ms
-  // 每条线随机出发延迟，每次刷新不同
-  const delays = linesData.map(() => Math.random() * MAX_DELAY);
-  const totalDuration = flightTime + MAX_DELAY;
+  const DURATION_JITTER = 0.3; // 飞行时长随机波动 ±30%
+  // 每条线独立随机：出发延迟 + 飞行时长，确保到达时间充分分散
+  const lineParams = linesData.map(() => {
+    const delay    = Math.random() * MAX_DELAY;
+    const duration = flightTime * (1 - DURATION_JITTER + Math.random() * DURATION_JITTER * 2);
+    return { delay, duration };
+  });
+  const totalDuration = flightTime * (1 + DURATION_JITTER) + MAX_DELAY;
 
   function resize() {
     cvs.width  = container.offsetWidth;
@@ -102,10 +105,10 @@ function _cometCanvas(chart, linesData, scatterData, flightTime) {
 
       const allDone = elapsed >= totalDuration;
       linesData.forEach((line, i) => {
-        // 每条线有自己的进度 t，出发延迟不同
-        const lineElapsed = elapsed - delays[i];
-        if (lineElapsed <= 0) return; // 还没出发
-        const t = Math.min(lineElapsed / flightTime, 1);
+        const { delay, duration } = lineParams[i];
+        const lineElapsed = elapsed - delay;
+        if (lineElapsed <= 0) return;
+        const t = Math.min(lineElapsed / duration, 1);
 
         const [ox, oy] = chart.convertToPixel('geo', line.coords[0]);
         const [ex, ey] = chart.convertToPixel('geo', line.coords[1]);
@@ -153,12 +156,11 @@ function _cometCanvas(chart, linesData, scatterData, flightTime) {
           }
         }
 
-        // 到达终点：触发节点亮起，错开延迟防卡顿
+        // 到达终点：触发节点亮起
         if (t >= 1 && !arrived[i]) {
           arrived[i] = true;
           const info = nodeInfos[i];
-          if (info) _revealOneNode(chart, info, i, arrivalCount * ARRIVAL_STAGGER);
-          arrivalCount++;
+          if (info) _revealOneNode(chart, info, i, 0);
         }
       });
 
