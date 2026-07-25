@@ -219,6 +219,8 @@ function _cometCanvas(chart, linesData, scatterData, flightTime) {
         redrawDashes();
         chart.on('georoam', redrawDashes);
         window.addEventListener('resize', redrawDashes);
+        // 暴露给外部（resetMap 动画期间复用）
+        cvs._redrawDashes = redrawDashes;
         resolve();
       }
     }

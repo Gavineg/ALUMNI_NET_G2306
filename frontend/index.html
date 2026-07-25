@@ -212,9 +212,21 @@
     boot().then(() => {}); // 保持原有启动流程
 
     window.resetMap = function() {
-      chart.setOption({ geo: { zoom: initZoom, center: initCenter } });
+      chart.setOption({ geo: { zoom: initZoom, center: initCenter, animationDurationUpdate: 600 } });
       closePanel();
-      // keep focus on DOS input, don't steal it
+
+      // geo 回归动画期间（~700ms）持续重绘 canvas 虚线
+      const cometCvs = document.getElementById('comet-canvas');
+      if (cometCvs?._redrawDashes) {
+        const redraw = cometCvs._redrawDashes;
+        const deadline = performance.now() + 700;
+        function onRendered() {
+          redraw();
+          if (performance.now() >= deadline) chart.off('rendered', onRendered);
+        }
+        chart.on('rendered', onRendered);
+      }
+
       requestAnimationFrame(() => dosInput.focus());
     };
 
