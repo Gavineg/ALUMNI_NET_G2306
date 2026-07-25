@@ -118,13 +118,21 @@
       subEl.textContent = '';
       await typeWrite(subEl, 'LAUNCHING TRACER SWARM...', 12);
 
-      launchParticles(chart, mapData.originCoords, mapData.linesData, FLIGHT_TIME, {
+      // comet 模式：await Canvas 动画完成（所有节点亮起后 resolve）
+      // rotary 模式：出发点 ripple 稍作停顿
+      // 其他模式：等飞行时长
+      const launchPromise = launchParticles(chart, mapData.originCoords, mapData.linesData, mapData.scatterData, FLIGHT_TIME, {
         originIcon: mapData.originIcon,
         lineAnim:   mapData.lineAnim
       });
 
-      // rotary 模式：出发点 ripple 稍作停顿后直接进入雷达，无需等飞行粒子
-      await sleep(mapData.lineAnim === 'rotary' ? 800 : FLIGHT_TIME + 200);
+      if (mapData.lineAnim === 'rotary') {
+        await sleep(800);
+      } else if (mapData.lineAnim === 'comet') {
+        await launchPromise;
+      } else {
+        await sleep(FLIGHT_TIME + 200);
+      }
 
       // 解锁地图
       chart.setOption({ geo: { roam: true } });

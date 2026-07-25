@@ -17,11 +17,11 @@ const ORIGIN_ICONS = {
 // ── 出发点颜色主题 ───────────────────────────────────────────
 const ICON_COLOR = { color: '#ff4b1f', shadowBlur: 24, shadowColor: 'rgba(255,75,31,0.8)' };
 
-export function launchParticles(chart, originCoords, linesData, flightTime, opts = {}) {
+export function launchParticles(chart, originCoords, linesData, scatterData, flightTime, opts = {}) {
   const { originIcon = 'diamond', lineAnim = 'comet' } = opts;
   const symbol = ORIGIN_ICONS[originIcon] || ORIGIN_ICONS.diamond;
 
-  // 出发点
+  // 出发点图标
   chart.setOption({
     series: [{
       id: 'origin', type: 'effectScatter', coordinateSystem: 'geo', zlevel: 4,
@@ -33,7 +33,182 @@ export function launchParticles(chart, originCoords, linesData, flightTime, opts
     }]
   });
 
+  if (lineAnim === 'comet') {
+    return _cometCanvas(chart, linesData, scatterData, flightTime);
+  }
   _doLineAnim(chart, linesData, flightTime, lineAnim);
+  return Promise.resolve();
+}
+
+// ── Canvas 彗星（comet 模式专用）────────────────────────────
+// 二次贝塞尔点：与 ECharts curveness:0.22 保持一致
+function _bezierCtrl(p0x, p0y, p2x, p2y, curveness = 0.22) {
+  const mx = (p0x + p2x) / 2, my = (p0y + p2y) / 2;
+  const dx = p2x - p0x,       dy = p2y - p0y;
+  return [mx - dy * curveness, my + dx * curveness];
+}
+function _bezierPt(p0x, p0y, p1x, p1y, p2x, p2y, t) {
+  const u = 1 - t;
+  return [
+    u * u * p0x + 2 * u * t * p1x + t * t * p2x,
+    u * u * p0y + 2 * u * t * p1y + t * t * p2y,
+  ];
+}
+
+function _cometCanvas(chart, linesData, scatterData, flightTime) {
+  const container = chart.getDom();
+  if (getComputedStyle(container).position === 'static') container.style.position = 'relative';
+
+  const cvs = document.createElement('canvas');
+  cvs.id = 'comet-canvas';
+  cvs.style.cssText = 'position:absolute;top:0;left:0;pointer-events:none;z-index:4;';
+  container.appendChild(cvs);
+  const ctx = cvs.getContext('2d');
+
+  // 预计算节点信息，用于到达时触发
+  const nodeInfos = scatterData.map(node => {
+    const cluster = node.value[2];
+    const mc = cluster.universities
+      ? cluster.universities.reduce((s, u) => s + (u.members?.length || 0), 0)
+      : (cluster.members?.length || 1);
+    return { node, finalSize: Math.min(7 + mc * 2, 12) };
+  });
+
+  const arrived = new Array(linesData.length).fill(false);
+  const TRAIL = 0.25; // 拖尾占路径比例
+
+  function resize() {
+    cvs.width  = container.offsetWidth;
+    cvs.height = container.offsetHeight;
+  }
+  resize();
+  window.addEventListener('resize', resize);
+
+  const startTime = performance.now();
+  let rafId;
+
+  return new Promise(resolve => {
+    function frame(now) {
+      const t = Math.min((now - startTime) / flightTime, 1);
+      const w = cvs.width, h = cvs.height;
+      ctx.clearRect(0, 0, w, h);
+
+      linesData.forEach((line, i) => {
+        const [ox, oy] = chart.convertToPixel('geo', line.coords[0]);
+        const [ex, ey] = chart.convertToPixel('geo', line.coords[1]);
+        const [cx, cy] = _bezierCtrl(ox, oy, ex, ey);
+
+        // 已飞过的虚线路径
+        ctx.save();
+        ctx.setLineDash([4, 7]);
+        ctx.strokeStyle = 'rgba(184,255,71,0.38)';
+        ctx.lineWidth = 1;
+        ctx.beginPath();
+        const steps = 40;
+        const [sx, sy] = _bezierPt(ox, oy, cx, cy, ex, ey, 0);
+        ctx.moveTo(sx, sy);
+        for (let s = 1; s <= steps; s++) {
+          const st = (s / steps) * t;
+          const [px, py] = _bezierPt(ox, oy, cx, cy, ex, ey, st);
+          ctx.lineTo(px, py);
+        }
+        ctx.stroke();
+        ctx.restore();
+
+        // 彗星拖尾（渐变线段）
+        const tailStart = Math.max(0, t - TRAIL);
+        const TAIL_STEPS = 20;
+        for (let s = 0; s < TAIL_STEPS; s++) {
+          const ta = tailStart + (t - tailStart) * (s / TAIL_STEPS);
+          const tb = tailStart + (t - tailStart) * ((s + 1) / TAIL_STEPS);
+          const alpha = ((s + 1) / TAIL_STEPS) * 0.9;
+          const [ax, ay] = _bezierPt(ox, oy, cx, cy, ex, ey, ta);
+          const [bx, by] = _bezierPt(ox, oy, cx, cy, ex, ey, tb);
+          ctx.save();
+          ctx.strokeStyle = `rgba(184,255,71,${alpha.toFixed(3)})`;
+          ctx.lineWidth = 1.5 + alpha * 1.5;
+          ctx.shadowBlur = 4 * alpha;
+          ctx.shadowColor = '#b8ff47';
+          ctx.beginPath();
+          ctx.moveTo(ax, ay);
+          ctx.lineTo(bx, by);
+          ctx.stroke();
+          ctx.restore();
+        }
+
+        // 彗星头部亮点
+        const [hx, hy] = _bezierPt(ox, oy, cx, cy, ex, ey, t);
+        ctx.save();
+        ctx.beginPath();
+        ctx.arc(hx, hy, 3, 0, Math.PI * 2);
+        ctx.fillStyle = '#ffffff';
+        ctx.shadowBlur = 10;
+        ctx.shadowColor = '#b8ff47';
+        ctx.fill();
+        ctx.restore();
+
+        // 到达终点：触发节点亮起
+        if (t >= 1 && !arrived[i]) {
+          arrived[i] = true;
+          const info = nodeInfos[i];
+          if (info) _revealOneNode(chart, info, i);
+        }
+      });
+
+      if (t < 1) {
+        rafId = requestAnimationFrame(frame);
+      } else {
+        cancelAnimationFrame(rafId);
+        window.removeEventListener('resize', resize);
+        // 保留 Canvas 虚线，停止动画
+        // 彗星头消失：重绘一次只保留虚线
+        ctx.clearRect(0, 0, cvs.width, cvs.height);
+        linesData.forEach((line) => {
+          const [ox, oy] = chart.convertToPixel('geo', line.coords[0]);
+          const [ex, ey] = chart.convertToPixel('geo', line.coords[1]);
+          const [cx, cy] = _bezierCtrl(ox, oy, ex, ey);
+          ctx.save();
+          ctx.setLineDash([4, 7]);
+          ctx.strokeStyle = 'rgba(184,255,71,0.38)';
+          ctx.lineWidth = 1;
+          ctx.beginPath();
+          const [sx, sy] = _bezierPt(ox, oy, cx, cy, ex, ey, 0);
+          ctx.moveTo(sx, sy);
+          for (let s = 1; s <= 40; s++) {
+            const [px, py] = _bezierPt(ox, oy, cx, cy, ex, ey, s / 40);
+            ctx.lineTo(px, py);
+          }
+          ctx.stroke();
+          ctx.restore();
+        });
+        resolve();
+      }
+    }
+    rafId = requestAnimationFrame(frame);
+  });
+}
+
+// 单个节点 easeOutBack 亮起
+function _revealOneNode(chart, { node, finalSize }, idx) {
+  const DURATION = 400;
+  const t0 = performance.now();
+  function frame(now) {
+    const t = Math.min((now - t0) / DURATION, 1);
+    const sz = Math.max(0.01, _easeOutBack(t) * finalSize);
+    const op = Math.min(t * 2.5, 1);
+    chart.setOption({ series: [{
+      id: `target-${idx}`, type: 'effectScatter', coordinateSystem: 'geo', zlevel: 3,
+      symbol: 'circle', symbolSize: sz, animation: false,
+      data: [{ name: node.name, value: node.value,
+        itemStyle: { color: node.nodeColor, opacity: op,
+          shadowBlur: op * 14, shadowColor: node.nodeColor } }],
+      showEffectOn: 'render',
+      rippleEffect: { brushType: 'stroke', scale: 2.5, period: 1.8 },
+      label: { show: false },
+    }]});
+    if (t < 1) requestAnimationFrame(frame);
+  }
+  requestAnimationFrame(frame);
 }
 
 function _doLineAnim(chart, linesData, flightTime, style) {
@@ -164,14 +339,25 @@ function _staticLineStyle(mode) {
 export async function revealTargets(chart, scatterData, linesData, colorMode, opts = {}) {
   const { nodeAnim = 'expand', lineAnim = 'comet' } = opts;
 
-  // 静态底线先铺好（彗星继续在上面飞，不清空）
+  // comet 模式：节点已由 _cometCanvas 触发，只需启动持续小彗星
+  if (lineAnim === 'comet') {
+    await _sleep(120);
+    chart.setOption({ series: [{
+      id: 'pulse-lines', type: 'lines', coordinateSystem: 'geo', zlevel: 1,
+      effect: { show: true, period: 3.5, trailLength: 0.3,
+                color: 'rgba(184,255,71,0.6)', symbolSize: 3 },
+      lineStyle: { color: 'rgba(0,0,0,0)', width: 0, curveness: 0.22 }, data: linesData
+    }]});
+    return;
+  }
+
+  // 非 comet 模式：清粒子 → 铺静态底线 → 节点动画
+  _clearCometSeries(chart);
   const staticStyle = _staticLineStyle(lineAnim);
-  chart.setOption({
-    series: [
-      { id:'static-lines', type:'lines', coordinateSystem:'geo', zlevel:0,
-        lineStyle: staticStyle.line, data:linesData },
-    ]
-  });
+  chart.setOption({ series: [
+    { id: 'static-lines', type: 'lines', coordinateSystem: 'geo', zlevel: 0,
+      lineStyle: staticStyle.line, data: linesData },
+  ]});
 
   const nodeInfos = scatterData.map(node => {
     const cluster = node.value[2];
@@ -181,13 +367,11 @@ export async function revealTargets(chart, scatterData, linesData, colorMode, op
     return { node, finalSize: Math.min(7 + memberCount * 2, 12) };
   });
 
-  // rotary: 节点初始化为 dim 状态，由 startRadarSweep 管理亮度，不需要衔接动画
   if (lineAnim === 'rotary') {
     _clearCometSeries(chart);
     return _registerNodes(chart, nodeInfos, 0, 0.08);
   }
 
-  // 节点渐显与彗星同时进行，节点全亮后再淡出彗星、切入持续流光
   let nodeAnimPromise;
   if (nodeAnim === 'scanline')      nodeAnimPromise = _animScanline(chart, nodeInfos);
   else if (nodeAnim === 'implode')  nodeAnimPromise = _animImplode(chart, nodeInfos);
@@ -197,8 +381,6 @@ export async function revealTargets(chart, scatterData, linesData, colorMode, op
   else                               nodeAnimPromise = _animExpand(chart, nodeInfos);
 
   await nodeAnimPromise;
-
-  // 节点全亮后：彗星淡出 → 切入持续慢流光
   await _fadeOutComets(chart, linesData, lineAnim);
 }
 
