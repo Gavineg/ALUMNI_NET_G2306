@@ -125,17 +125,14 @@ function _doLineAnim(chart, linesData, flightTime, style) {
     ]});
 
   } else {
-    // comet（默认）：三层彗星
-    const layers = [
-      { id:'comet1', period:3.2/p, size:6,   trail:0.15, color:'#b8ff47', opacity:1.0 },
-      { id:'comet2', period:2.4/p, size:3,   trail:0.45, color:'#d4ff80', opacity:0.7 },
-      { id:'comet3', period:1.6/p, size:1.5, trail:0.78, color:'#aaffee', opacity:0.4 },
-    ];
-    chart.setOption({ series: layers.map(l => ({
-      id:l.id, type:'lines', coordinateSystem:'geo', zlevel:2,
-      effect:{ show:true, period:l.period, trailLength:l.trail, color:l.color, symbolSize:l.size },
-      lineStyle:{ color:'rgba(0,0,0,0)', width:0, curveness:0.22, opacity:l.opacity }, data:linesData
-    }))});
+    // comet（默认）：单层彗星，头部小、拖尾长，密集循环
+    chart.setOption({ series: [
+      { id:'comet1', type:'lines', coordinateSystem:'geo', zlevel:2,
+        effect:{ show:true, period:p*0.9, trailLength:0.35, color:'#b8ff47', symbolSize:4 },
+        lineStyle:{ color:'rgba(0,0,0,0)', width:0, curveness:0.22 }, data:linesData },
+      { id:'comet2', data:[], effect:{ show:false }, lineStyle:{ width:0 } },
+      { id:'comet3', data:[], effect:{ show:false }, lineStyle:{ width:0 } },
+    ]});
   }
 }
 
@@ -167,30 +164,14 @@ function _staticLineStyle(mode) {
 export async function revealTargets(chart, scatterData, linesData, colorMode, opts = {}) {
   const { nodeAnim = 'expand', lineAnim = 'comet' } = opts;
 
-  // 完全清除所有飞行粒子系列（comet1-6 可能是 lines 或 effectScatter 类型）
-  // data:[] 同时适用两种类型，彻底清空数据和 effect
-  chart.setOption({ series: [
-    { id:'comet1', data:[], effect:{ show:false }, lineStyle:{ width:0, opacity:0 } },
-    { id:'comet2', data:[], effect:{ show:false }, lineStyle:{ width:0, opacity:0 } },
-    { id:'comet3', data:[], effect:{ show:false }, lineStyle:{ width:0, opacity:0 } },
-    { id:'comet4', data:[], effect:{ show:false }, lineStyle:{ width:0, opacity:0 } },
-    { id:'comet5', data:[], effect:{ show:false }, lineStyle:{ width:0, opacity:0 } },
-    { id:'comet6', data:[], effect:{ show:false }, lineStyle:{ width:0, opacity:0 } },
-  ]});
-
-  // 静态底线：各模式保留对应风格的连线
+  // 静态底线先铺好（彗星继续在上面飞，不清空）
   const staticStyle = _staticLineStyle(lineAnim);
   chart.setOption({
     series: [
       { id:'static-lines', type:'lines', coordinateSystem:'geo', zlevel:0,
         lineStyle: staticStyle.line, data:linesData },
-      { id:'pulse-lines', type:'lines', coordinateSystem:'geo', zlevel:1,
-        effect:{ show: lineAnim === 'comet',
-                 period:1.4, trailLength:0.2, color:'rgba(184,255,71,0.5)', symbolSize:2 },
-        lineStyle:{ color:'rgba(0,0,0,0)', width:0, curveness:0.22 }, data:linesData }
     ]
   });
-  await _sleep(120);
 
   const nodeInfos = scatterData.map(node => {
     const cluster = node.value[2];
@@ -200,19 +181,64 @@ export async function revealTargets(chart, scatterData, linesData, colorMode, op
     return { node, finalSize: Math.min(7 + memberCount * 2, 12) };
   });
 
-  if (nodeAnim === 'scanline')  return _animScanline(chart, nodeInfos);
-  if (nodeAnim === 'implode')   return _animImplode(chart, nodeInfos);
-  if (nodeAnim === 'flicker')   return _animFlicker(chart, nodeInfos);
-  if (nodeAnim === 'glitch')    return _animGlitch(chart, nodeInfos);
-  if (nodeAnim === 'cascade')   return _animCascade(chart, nodeInfos);
-  // rotary: 节点初始化为 dim 状态，由 startRadarSweep 管理亮度
-  if (lineAnim === 'rotary')    return _registerNodes(chart, nodeInfos, 0, 0.08);
-  return _animExpand(chart, nodeInfos); // default: expand
+  // rotary: 节点初始化为 dim 状态，由 startRadarSweep 管理亮度，不需要衔接动画
+  if (lineAnim === 'rotary') {
+    _clearCometSeries(chart);
+    return _registerNodes(chart, nodeInfos, 0, 0.08);
+  }
+
+  // 节点渐显与彗星同时进行，节点全亮后再淡出彗星、切入持续流光
+  let nodeAnimPromise;
+  if (nodeAnim === 'scanline')      nodeAnimPromise = _animScanline(chart, nodeInfos);
+  else if (nodeAnim === 'implode')  nodeAnimPromise = _animImplode(chart, nodeInfos);
+  else if (nodeAnim === 'flicker')  nodeAnimPromise = _animFlicker(chart, nodeInfos);
+  else if (nodeAnim === 'glitch')   nodeAnimPromise = _animGlitch(chart, nodeInfos);
+  else if (nodeAnim === 'cascade')  nodeAnimPromise = _animCascade(chart, nodeInfos);
+  else                               nodeAnimPromise = _animExpand(chart, nodeInfos);
+
+  await nodeAnimPromise;
+
+  // 节点全亮后：彗星淡出 → 切入持续慢流光
+  await _fadeOutComets(chart, linesData, lineAnim);
 }
 
 // ── 节点动画辅助函数 ─────────────────────────────────────────
 
-function _registerNodes(chart, nodeInfos, initSize = 0, initOp = 0) {
+function _clearCometSeries(chart) {
+  chart.setOption({ series: [
+    { id:'comet1', data:[], effect:{ show:false }, lineStyle:{ width:0, opacity:0 } },
+    { id:'comet2', data:[], effect:{ show:false }, lineStyle:{ width:0, opacity:0 } },
+    { id:'comet3', data:[], effect:{ show:false }, lineStyle:{ width:0, opacity:0 } },
+    { id:'comet4', data:[], effect:{ show:false }, lineStyle:{ width:0, opacity:0 } },
+    { id:'comet5', data:[], effect:{ show:false }, lineStyle:{ width:0, opacity:0 } },
+    { id:'comet6', data:[], effect:{ show:false }, lineStyle:{ width:0, opacity:0 } },
+  ]});
+}
+
+// 节点亮起后：彗星逐步降速淡出，切换为持续慢流光
+async function _fadeOutComets(chart, linesData, lineAnim) {
+  // 先把彗星 period 拉长（视觉上减速）
+  const slowPeriod = 3.5;
+  chart.setOption({ series: [
+    { id:'comet1', effect:{ period: slowPeriod, symbolSize:4, trailLength:0.25, color:'rgba(184,255,71,0.6)' } },
+    { id:'comet2', effect:{ period: slowPeriod * 1.3, symbolSize:2, trailLength:0.15 } },
+    { id:'comet3', effect:{ period: slowPeriod * 0.8, symbolSize:1.5, trailLength:0.1 } },
+  ]});
+  await _sleep(600);
+
+  // 清除飞行粒子，切入持续慢流光（pulse-lines）
+  _clearCometSeries(chart);
+  chart.setOption({
+    series: [{
+      id:'pulse-lines', type:'lines', coordinateSystem:'geo', zlevel:1,
+      effect:{ show: true, period: 3.5, trailLength:0.18,
+               color:'rgba(184,255,71,0.45)', symbolSize:3 },
+      lineStyle:{ color:'rgba(0,0,0,0)', width:0, curveness:0.22 }, data:linesData
+    }]
+  });
+}
+
+
   chart.setOption({ series: nodeInfos.map(({ node, finalSize }, idx) => ({
     id:`target-${idx}`, type:'effectScatter', coordinateSystem:'geo', zlevel:3,
     symbol:'circle', symbolSize:initSize||0.01, animation:false,
