@@ -15,8 +15,11 @@ const DIAMOND_PATH   = 'path://M0,-14 L10,0 L0,14 L-10,0 Z';
 /**
  * 设置出发点 + 发射三层彗星粒子
  */
+/**
+ * 设置出发点 + 发射三层彗星粒子（赛博朋克黑客风）
+ */
 export function launchParticles(chart, originCoords, linesData, flightTime) {
-  // 出发点（菱形+脉冲红橙）
+  // 出发点：菱形 + 红橙脉冲光晕
   chart.setOption({
     series: [{
       id: 'origin',
@@ -25,32 +28,31 @@ export function launchParticles(chart, originCoords, linesData, flightTime) {
       coordinateSystem: 'geo',
       zlevel: 4,
       symbol: DIAMOND_PATH,
-      symbolSize: 12,
+      symbolSize: 14,
       data: [{ name: 'ORIGIN', value: originCoords }],
       showEffectOn: 'render',
-      rippleEffect: { brushType: 'stroke', scale: 2, period: 2.5 },
-      itemStyle: { color: '#ff4b1f', shadowBlur: 15, shadowColor: '#ff4b1f' },
+      rippleEffect: { brushType: 'stroke', scale: 3, period: 2 },
+      itemStyle: { color: '#ff4b1f', shadowBlur: 24, shadowColor: 'rgba(255,75,31,0.8)' },
       label: { show: false }
     }]
   });
 
-  // 一层彗星（原三层合并，减少 ECharts 动画 series 数量）
+  // 三层彗星：主光束 + 余晖 + 电离尾迹，营造数据包穿越网络的视觉
   const layers = [
-    { id: 'comet1', period: 3.5 / (flightTime / 1000), size: 4, trail: 0.35, color: '#b8ff47', opacity: 0.85 },
+    // 主光束：亮绿，粗，短尾
+    { id: 'comet1', period: 3.2 / (flightTime / 1000), size: 6,   trail: 0.15, color: '#b8ff47', opacity: 1.0  },
+    // 余晖：淡黄，中，中尾
+    { id: 'comet2', period: 2.4 / (flightTime / 1000), size: 3,   trail: 0.45, color: '#d4ff80', opacity: 0.7  },
+    // 电离尾迹：白蓝，细，长尾
+    { id: 'comet3', period: 1.6 / (flightTime / 1000), size: 1.5, trail: 0.78, color: '#aaffee', opacity: 0.4  },
   ];
-
-  // 移除多余的 comet series（如果之前存在）
-  chart.setOption({ series: [
-    { id: 'comet2', type: 'lines', data: [], effect: { show: false } },
-    { id: 'comet3', type: 'lines', data: [], effect: { show: false } },
-  ]});
 
   chart.setOption({
     series: layers.map(l => ({
       id: l.id,
       type: 'lines',
       coordinateSystem: 'geo',
-      zlevel: 1,
+      zlevel: 2,
       effect: {
         show: true,
         period: l.period,
@@ -65,7 +67,8 @@ export function launchParticles(chart, originCoords, linesData, flightTime) {
 }
 
 /**
- * 粒子落地后：静态底线 + 逐个亮起目标节点（辐射顺序）
+ * 粒子落地后：静态底线 + 逐个亮起目标节点
+ * arrivalDelay: 粒子飞行结束到第一个节点显示的额外等待（ms），默认0
  */
 export async function revealTargets(chart, scatterData, linesData, colorMode) {
   // 静态虚线底层
@@ -80,11 +83,10 @@ export async function revealTargets(chart, scatterData, linesData, colorMode) {
           color: 'rgba(184,255,71,0.18)',
           width: 1,
           curveness: 0.22,
-          type: [5, 9]   // 不均匀虚线，电路板感
+          type: [5, 9]
         },
         data: linesData
       },
-      // 电流脉冲粒子（沿连线循环跑）
       {
         id: 'pulse-lines',
         type: 'lines',
@@ -102,7 +104,10 @@ export async function revealTargets(chart, scatterData, linesData, colorMode) {
     ]
   });
 
-  // 逐个渐显（近→远）— 每4个节点批量 setOption，减少重绘次数
+  // 粒子刚落地，稍等一拍再开始显示节点（让线条先稳定）
+  await _sleep(120);
+
+  // 逐个渐显（近→远），每4个批量 setOption
   const BATCH = 4;
   for (let i = 0; i < scatterData.length; i += BATCH) {
     const batch = scatterData.slice(i, i + BATCH);

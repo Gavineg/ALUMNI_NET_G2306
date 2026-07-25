@@ -118,18 +118,40 @@ function sleep(ms) { return new Promise(r => setTimeout(r, ms)); }
 
 function helpLines() {
   return [
-    L('AVAILABLE COMMANDS ::'),
+    L('  [ ???? ]'),
+    L('    help            — show this help'),
+    L('    reboot          — reload page'),
+    L('    date            — show current date/time'),
+    L('    whoami          — show current user'),
+    L('    stats           — cohort statistics'),
+    L('    find <name>     — locate a student on map'),
+    L('    MATRIX          — ???'),
+    L('    KONAMI          — ↑↑↓↓←→←→BA'),
+    L('    SL              — CHOO CHOO'),
+    L('    FORTUNE         — ASK THE ORACLE'),
+    L('    42              — THE ANSWER'),
+    L('    COFFEE          — BREW A CUP'),
+    L('    ABOUT / CREDITS — PROJECT INFO'),
+    L(''),
+  ];
+}
+
+// 完整功能列表（KONAMI 解锁后显示）
+function fullHelpLines() {
+  return [
+    L('ALUMNI_NET :: FULL SYSTEM ACCESS GRANTED', 'OK'),
     L(''),
     L('  [ SYSTEM ]'),
     L('    help            — show this help'),
     L('    date            — show current date/time'),
     L('    clear           — clear terminal output'),
     L('    sudo <CMD>      — attempt to run command as root'),
-    L('    themes          — list downloaded themes'), 
-    L('    apply <file>    — apply downloaded theme'),       
+    L('    themes          — list downloaded themes'),
+    L('    apply <file>    — apply downloaded theme'),
     L('    restore         — restore default theme'),
     L('    fullscreen      — enter fullscreen terminal mode'),
     L('    exit            — exit fullscreen / close panel'),
+    L('    reboot [-f]     — reload page; -f fetches fresh data from server'),
     L(''),
     L('  [ AUTH ]'),
     L('    login           — authenticate with username + password'),
@@ -140,7 +162,6 @@ function helpLines() {
     L('    portal          — open student/admin dashboard (auto-login)'),
     L('    cd <path>       — navigate virtual directories (C:\\G2306\\<username>)'),
     L('    reinstall       — restore deleted tools and reset local filesystem'),
-    L('    reboot          — force reload page from server (clears cache)'),
     L(''),
     L('  [ RECON ]'),
     L('    whoami          — show current user'),
@@ -386,17 +407,18 @@ export async function runCommand(raw, ctx) {
     return lines;
   }
   if (cmd === 'reboot') {
+    const force = arg1 === '-f';
     const lines = [
       L('> Broadcast message from root@localhost'),
       L(`> (/dev/pts/0) at ${new Date().toString().toUpperCase()}...`),
-      L('> The system is going down for reboot NOW!'),
+      L(force
+        ? '> The system is going down for reboot NOW!  [FORCE: cache purged]'
+        : '> The system is going down for reboot NOW!'),
       L(''),
     ];
-    // print lines then reload after short delay
     setTimeout(() => {
-      sessionStorage.removeItem('g2306_map_cache');
-      // cache-bust: append timestamp so browser fetches fresh from server
-      window.location.href = window.location.pathname + '?_=' + Date.now();
+      if (force) sessionStorage.removeItem('g2306_map_cache');
+      window.location.href = window.location.pathname + (force ? '?_=' + Date.now() : '');
     }, 1200);
     return lines;
   }
@@ -1084,7 +1106,33 @@ export async function runCommand(raw, ctx) {
   if (cmd === 'sudo') return [L(`SUDO ${arg.toUpperCase()||'(NOTHING)'}`), L('[SUDO] PASSWORD FOR GUEST: ********'), L('PERMISSION DENIED. NICE TRY.', 'ERR')];
   if (cmd === 'su')   return [L('ACCESS DENIED — USE THE LOGIN PORTAL.', 'ERR')];
   if (cmd === 'rm')   return arg.replace(/\s+/g,'').includes('-rf/') ? [L('NICE TRY.'), L('FILESYSTEM PROTECTED BY FRIENDSHIP.', 'OK')] : [L('RM: MISSING OPERAND', 'ERR')];
-  if (cmd === 'konami') return [L('↑ ↑ ↓ ↓ ← → ← → B A'), L('CODE ACCEPTED.'), L('+30 LIVES GRANTED (NOT REALLY)', 'OK')];
+  if (cmd === 'konami') {
+    await ctx.print([
+      L('↑ ↑ ↓ ↓ ← → ← → B A'),
+      L('> CHEAT CODE DETECTED.', 'RDY'),
+      L('> WARNING: This will unlock all system commands.'),
+      L('> Are you sure? Type YES to confirm:'),
+    ]);
+    const c1 = await ctx.promptLine('> ');
+    if (c1?.trim().toUpperCase() !== 'YES') return [L('ABORTED.', 'ERR')];
+    await ctx.print([L('> CONFIRM AGAIN — type OVERRIDE to proceed:')]);
+    const c2 = await ctx.promptLine('> ');
+    if (c2?.trim().toUpperCase() !== 'OVERRIDE') return [L('ABORTED.', 'ERR')];
+
+    return [
+      L('> LOADING SYSTEM MODULES...'),
+      L('  [██        ] 20%  — auth.sys'),
+      L('  [████      ] 40%  — hack.bin'),
+      L('  [██████    ] 60%  — roster.db'),
+      L('  [████████  ] 80%  — cmd.dll'),
+      L('  [██████████] 100% — DONE', 'OK'),
+      L(''),
+      L('+30 LIVES GRANTED.', 'OK'),
+      L('FULL COMMAND SET UNLOCKED.', 'OK'),
+      L(''),
+      ...fullHelpLines()
+    ];
+  }
   if (cmd === 'sl')   return [L('🚂 CHOO CHOO...'), L('A TRAIN PASSES THROUGH THE TERMINAL.')];
   if (cmd === 'fortune') return [L(pick(FORTUNES))];
   if (cmd === '42')   return [L('THE ANSWER TO LIFE, THE UNIVERSE, AND EVERYTHING.')];
