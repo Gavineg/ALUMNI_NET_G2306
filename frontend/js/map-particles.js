@@ -196,28 +196,53 @@ function _cometCanvas(chart, linesData, scatterData, flightTime) {
   });
 }
 
-// 单个节点 easeOutBack 亮起，delay ms 后开始
-function _revealOneNode(chart, { node, finalSize }, idx, delay = 0) {
+// 共享节点动画调度器 — 所有到达节点合并进单个 rAF，每帧一次 setOption
+const _nodeAnimQueue = [];  // { chart, node, finalSize, idx, startTime }
+let _nodeAnimRaf = null;
+
+function _nodeAnimTick(now) {
   const DURATION = 700;
+  const updates = [];
+  let anyPending = false;
+  let chart = null;
+
+  for (let i = _nodeAnimQueue.length - 1; i >= 0; i--) {
+    const item = _nodeAnimQueue[i];
+    chart = item.chart;
+    const t = Math.min((now - item.startTime) / DURATION, 1);
+    const sz = Math.max(0.01, _easeOutBack(t) * item.finalSize);
+    const op = Math.min(t * 2, 1);
+    updates.push({
+      id: `target-${item.idx}`, type: 'effectScatter', coordinateSystem: 'geo', zlevel: 3,
+      symbol: 'circle', symbolSize: sz, animation: false,
+      data: [{ name: item.node.name, value: item.node.value,
+        itemStyle: { color: item.node.nodeColor, opacity: op,
+          shadowBlur: op * 14, shadowColor: item.node.nodeColor } }],
+      showEffectOn: 'render',
+      rippleEffect: { brushType: 'stroke', scale: 2.5, period: 1.8 },
+      label: { show: false },
+    });
+    if (t >= 1) _nodeAnimQueue.splice(i, 1);
+    else anyPending = true;
+  }
+
+  if (updates.length && chart) {
+    chart.setOption({ series: updates });
+  }
+
+  if (anyPending || _nodeAnimQueue.length) {
+    _nodeAnimRaf = requestAnimationFrame(_nodeAnimTick);
+  } else {
+    _nodeAnimRaf = null;
+  }
+}
+
+function _revealOneNode(chart, { node, finalSize }, idx, delay = 0) {
   setTimeout(() => {
-    const t0 = performance.now();
-    function frame(now) {
-      const t = Math.min((now - t0) / DURATION, 1);
-      const sz = Math.max(0.01, _easeOutBack(t) * finalSize);
-      const op = Math.min(t * 2, 1);
-      chart.setOption({ series: [{
-        id: `target-${idx}`, type: 'effectScatter', coordinateSystem: 'geo', zlevel: 3,
-        symbol: 'circle', symbolSize: sz, animation: false,
-        data: [{ name: node.name, value: node.value,
-          itemStyle: { color: node.nodeColor, opacity: op,
-            shadowBlur: op * 14, shadowColor: node.nodeColor } }],
-        showEffectOn: 'render',
-        rippleEffect: { brushType: 'stroke', scale: 2.5, period: 1.8 },
-        label: { show: false },
-      }]});
-      if (t < 1) requestAnimationFrame(frame);
+    _nodeAnimQueue.push({ chart, node, finalSize, idx, startTime: performance.now() });
+    if (!_nodeAnimRaf) {
+      _nodeAnimRaf = requestAnimationFrame(_nodeAnimTick);
     }
-    requestAnimationFrame(frame);
   }, delay);
 }
 
