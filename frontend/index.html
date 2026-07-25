@@ -56,37 +56,28 @@
     let   initZoom    = isMobile ? 1.4 : 1.2;
     let   initCenter  = isMobile ? [105.0, 35.0] : [104.2, 35.9];
 
-    // 手机端：数据加载后根据节点 bbox 自动计算最优视角
-    function calcMobileView(scatterData, originCoords) {
-      const lons = [originCoords[0], ...scatterData.map(n => n.value[0])];
-      const lats = [originCoords[1], ...scatterData.map(n => n.value[1])];
-      const minLon = Math.min(...lons), maxLon = Math.max(...lons);
-      const minLat = Math.min(...lats), maxLat = Math.max(...lats);
-      const centerLon = (minLon + maxLon) / 2;
-      const centerLat = (minLat + maxLat) / 2;
+    // 手机端：在已知 center 下，用节点像素 bbox 反推最优 zoom
+    // 调用前必须已 setOption({ geo: { center: bboxCenter } }) 并等待渲染
+    function calcMobileView(scatterData, originCoords, currentZoom) {
+      const allCoords = [originCoords, ...scatterData.map(n => [n.value[0], n.value[1]])];
+      const pixels = allCoords.map(c => chart.convertToPixel('geo', c)).filter(p => p && isFinite(p[0]));
+      if (pixels.length < 2) return { zoom: currentZoom };
 
-      // 用 convertToPixel 在当前 zoom/center 下量出每经纬度对应多少像素
-      // 取 bbox 中心附近两个点量像素距离，避免边缘投影失真
-      const pA = chart.convertToPixel('geo', [centerLon,     centerLat]);
-      const pB = chart.convertToPixel('geo', [centerLon + 1, centerLat]);
-      const pC = chart.convertToPixel('geo', [centerLon,     centerLat + 1]);
-      const pxPerLon = Math.abs(pB[0] - pA[0]);
-      const pxPerLat = Math.abs(pC[1] - pA[1]);
-
-      if (!pxPerLon || !pxPerLat) return { center: [centerLon, centerLat], zoom: initZoom };
+      const pxMinX = Math.min(...pixels.map(p => p[0]));
+      const pxMaxX = Math.max(...pixels.map(p => p[0]));
+      const pxMinY = Math.min(...pixels.map(p => p[1]));
+      const pxMaxY = Math.max(...pixels.map(p => p[1]));
 
       const dom = chart.getDom();
-      const W = dom.offsetWidth  * 0.88; // 留 12% 边距
-      const H = dom.offsetHeight * 0.88;
+      const W = dom.offsetWidth  * 0.82;
+      const H = dom.offsetHeight * 0.82;
+      const bboxW = pxMaxX - pxMinX;
+      const bboxH = pxMaxY - pxMinY;
 
-      // bbox 需要占满 W×H，当前每度像素数对应 initZoom
-      // 目标 zoom = initZoom * min(W / bboxPxW, H / bboxPxH)
-      const bboxPxW = (maxLon - minLon) * pxPerLon;
-      const bboxPxH = (maxLat - minLat) * pxPerLat;
-      const scale = Math.min(W / bboxPxW, H / bboxPxH);
-      const zoom  = Math.min(initZoom * scale, 5);
+      if (!bboxW || !bboxH) return { zoom: currentZoom };
 
-      return { center: [centerLon, centerLat], zoom: Math.max(zoom, 0.8) };
+      const scale = Math.min(W / bboxW, H / bboxH);
+      return { zoom: Math.min(Math.max(currentZoom * scale, 0.8), 6) };
     }
 
     const chart       = echarts.init(document.getElementById('map-container'));
@@ -153,18 +144,18 @@
 
       // 手机端：用节点 bbox 覆盖初始视角
       if (isMobile) {
-        // 第一步：先把 center 设到 bbox 中心，等 ECharts 渲染一帧
         const lons = [mapData.originCoords[0], ...mapData.scatterData.map(n => n.value[0])];
         const lats = [mapData.originCoords[1], ...mapData.scatterData.map(n => n.value[1])];
         const minLon = Math.min(...lons), maxLon = Math.max(...lons);
         const minLat = Math.min(...lats), maxLat = Math.max(...lats);
         const bboxCenter = [(minLon + maxLon) / 2, (minLat + maxLat) / 2];
-        chart.setOption({ geo: { center: bboxCenter } }, { silent: true });
-        // 等一帧让 ECharts 用新 center 完成布局，再用 convertToPixel 量像素
+        // 先把 center 移到 bbox 中心，等两帧渲染后再量像素
+        initCenter = bboxCenter;
+        chart.setOption({ geo: { center: initCenter } }, { silent: true });
         await new Promise(r => requestAnimationFrame(() => requestAnimationFrame(r)));
-        const mv = calcMobileView(mapData.scatterData, mapData.originCoords);
-        initZoom   = mv.zoom;
-        initCenter = mv.center;
+        const mv = calcMobileView(mapData.scatterData, mapData.originCoords, initZoom);
+        initZoom = mv.zoom;
+        console.log('[mobile view] zoom=', initZoom.toFixed(2), 'center=', initCenter);
         chart.setOption({ geo: { zoom: initZoom, center: initCenter } }, { silent: true });
       }
 
