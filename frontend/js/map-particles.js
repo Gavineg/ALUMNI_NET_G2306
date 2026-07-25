@@ -45,7 +45,8 @@ export function launchParticles(chart, originCoords, linesData, scatterData, fli
 function _bezierCtrl(p0x, p0y, p2x, p2y, curveness = 0.22) {
   const mx = (p0x + p2x) / 2, my = (p0y + p2y) / 2;
   const dx = p2x - p0x,       dy = p2y - p0y;
-  return [mx - dy * curveness, my + dx * curveness];
+  // 正值 curveness → 向右弯（与 ECharts curveness 同向）
+  return [mx + dy * curveness, my - dx * curveness];
 }
 function _bezierPt(p0x, p0y, p1x, p1y, p2x, p2y, t) {
   const u = 1 - t;
@@ -115,19 +116,22 @@ function _cometCanvas(chart, linesData, scatterData, flightTime) {
         ctx.stroke();
         ctx.restore();
 
-        // 彗星拖尾（渐变线段）
+        // 流光：前端亮、后端暗，无尖锐头部，纯绿渐变
         const tailStart = Math.max(0, t - TRAIL);
-        const TAIL_STEPS = 20;
+        const TAIL_STEPS = 24;
         for (let s = 0; s < TAIL_STEPS; s++) {
           const ta = tailStart + (t - tailStart) * (s / TAIL_STEPS);
           const tb = tailStart + (t - tailStart) * ((s + 1) / TAIL_STEPS);
-          const alpha = ((s + 1) / TAIL_STEPS) * 0.9;
+          // 前端（s接近TAIL_STEPS）亮，后端（s=0）暗
+          const frac = (s + 1) / TAIL_STEPS;
+          const alpha = frac * frac * 0.95; // 二次曲线，前亮后暗
+          const width = 1.2 + frac * 2.0;
           const [ax, ay] = _bezierPt(ox, oy, cx, cy, ex, ey, ta);
           const [bx, by] = _bezierPt(ox, oy, cx, cy, ex, ey, tb);
           ctx.save();
           ctx.strokeStyle = `rgba(184,255,71,${alpha.toFixed(3)})`;
-          ctx.lineWidth = 1.5 + alpha * 1.5;
-          ctx.shadowBlur = 4 * alpha;
+          ctx.lineWidth = width;
+          ctx.shadowBlur = frac * 8;
           ctx.shadowColor = '#b8ff47';
           ctx.beginPath();
           ctx.moveTo(ax, ay);
@@ -135,17 +139,6 @@ function _cometCanvas(chart, linesData, scatterData, flightTime) {
           ctx.stroke();
           ctx.restore();
         }
-
-        // 彗星头部亮点
-        const [hx, hy] = _bezierPt(ox, oy, cx, cy, ex, ey, t);
-        ctx.save();
-        ctx.beginPath();
-        ctx.arc(hx, hy, 3, 0, Math.PI * 2);
-        ctx.fillStyle = '#ffffff';
-        ctx.shadowBlur = 10;
-        ctx.shadowColor = '#b8ff47';
-        ctx.fill();
-        ctx.restore();
 
         // 到达终点：触发节点亮起
         if (t >= 1 && !arrived[i]) {
