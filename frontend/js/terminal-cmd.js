@@ -121,54 +121,59 @@ function helpLines() {
     L('AVAILABLE COMMANDS ::'),
     L(''),
     L('  [ SYSTEM ]'),
-    L('    HELP            — show this help'),
-    L('    DATE            — show current date/time'),
-    L('    CLEAR           — clear terminal output'),
-    L('    FULLSCREEN      — enter fullscreen terminal mode'),
-    L('    EXIT            — exit fullscreen / close panel'),
+    L('    help            — show this help'),
+    L('    date            — show current date/time'),
+    L('    clear           — clear terminal output'),
+    L('    sudo <CMD>      — attempt to run command as root'),
+    L('    themes          — list downloaded themes'), 
+    L('    apply <file>    — apply downloaded theme'),       
+    L('    restore         — restore default theme'),
+    L('    fullscreen      — enter fullscreen terminal mode'),
+    L('    exit            — exit fullscreen / close panel'),
     L(''),
     L('  [ AUTH ]'),
-    L('    LOGIN           — authenticate with username + password'),
-    L('    LOGOUT          — end current session'),
-    L('    ME              — show your profile'),
-    L('    SET <field> <v> — update profile field (UNIVERSITY/MAJOR/STATUS/CENGFAN)'),
-    L('    PASSWD          — change password'),
-    L('    PORTAL          — open student/admin dashboard (auto-login)'),
-    L('    CD <path>       — navigate virtual directories (C:\\G2306\\<username>)'),
-    L('    REINSTALL       — restore deleted tools and reset local filesystem'),
+    L('    login           — authenticate with username + password'),
+    L('    logout          — end current session'),
+    L('    me              — show your profile'),
+    L('    set <field> <v> — update profile field (UNIVERSITY/MAJOR/STATUS/CENGFAN)'),
+    L('    passwd          — change password'),
+    L('    portal          — open student/admin dashboard (auto-login)'),
+    L('    cd <path>       — navigate virtual directories (C:\\G2306\\<username>)'),
+    L('    reinstall       — restore deleted tools and reset local filesystem'),
     L(''),
     L('  [ RECON ]'),
-    L('    WHOAMI          — show current user'),
-    L('    STATS           — cohort statistics'),
-    L('    FIND <name>     — locate a student on map'),
-    L('    ROSTER          — fullscreen list of all classmates by city'),
+    L('    whoami          — show current user'),
+    L('    stats           — cohort statistics'),
+    L('    find <name>     — locate a student on map'),
+    L('    roster          — fullscreen list of all classmates by city'),
     L(''),
     L('  [ HACK ]'),
-    L('    SCAN            — scan network for live hosts'),
-    L('    CONNECT <host>  — connect to a host (hostname or IP)'),
-    L('    PORT <num>      — select port to attack'),
-    L('    CRACK           — attempt to crack selected port'),
-    L('    EXPLOIT         — solve crypto challenge to gain root'),
-    L('    LS              — list files on rooted server'),
-    L('    DOWNLOAD <file> — download file from server'),
-    L('    DISCONNECT      — close current connection'),
-    L('    APPLY <file>    — apply downloaded theme'),
-    L('    THEMES          — list downloaded themes'),
-    L('    RESTORE         — restore default theme'),
+    L('    scan            — scan network for live hosts'),
+    L('    connect <host>  — connect to a host (hostname or IP)'),
+    L('    port <num>      — select port to attack'),
+    L('    crack           — attempt to crack selected port'),
+    L('    exploit         — solve crypto challenge to gain root'),
+    L('    download <file> — download file from server'),
+    L('    disconnect      — close current connection'),
     L(''),
     L('  [ FILES ]'),
-    L('    LS / DIR        — list local files'),
-    L('    CAT <file>      — read a file'),
-    L('    MKDIR <dir>     — create directory'),
-    L('    TOUCH <file>    — create empty file'),
-    L('    ECHO <t> > <f>  — write text to file'),
-    L('    RM <file>       — delete file or directory'),
-    L('    VIM <file>      — edit a file (supports /etc/g2306/.env)'),
+    L('    ls / dir        — list local files'),
+    L('    cat <file>      — read a file'),
+    L('    mkdir <dir>     — create directory'),
+    L('    touch <file>    — create empty file'),
+    L('    echo <t> > <f>  — write text to file'),
+    L('    rm <file>       — delete file or directory'),
+    L('    vim <file>      — edit a file (supports /etc/g2306/.env)'),
     L(''),
-    L('  [ MISC ]'),
-    L('    MATRIX  FORTUNE  42  COFFEE  ABOUT  SL  KONAMI'),
+    L('  [ ???? ]'),
+    L('    MATRIX          — ???'),
+    L('    KONAMI          — ↑↑↓↓←→←→BA'),
+    L('    SL              — CHOO CHOO'),
+    L('    FORTUNE         — ASK THE ORACLE'),
+    L('    42              — THE ANSWER'),
+    L('    COFFEE          — BREW A CUP'),
+    L('    ABOUT / CREDITS — PROJECT INFO'),
     L(''),
-    L('  CTRL+C  — interrupt current command (stays in fullscreen)')
   ];
 }
 
@@ -379,6 +384,29 @@ export async function runCommand(raw, ctx) {
     lines.push(L('> TYPE "EXIT" TO RETURN TO MAP'));
     return lines;
   }
+  // —— SYSTEM REBOOT ——————————————————————————————————————————
+  if(cmd==reboot){
+    const lines = [L('> Broadcast message from root@localhost'), L('> (/dev/pts/0) at '+new Date().toString().toUpperCase()+'...'), L('> The system is going down for reboot NOW!')];
+    ctx.clearTerminal();
+    ctx.setFullscreen(true);
+    for (const item of lines) {
+      const div = document.createElement('div');
+      div.textContent = item.text;
+      if (item.status === 'OK') div.style.color = 'var(--hud-primary)';
+      else if (item.status === 'ERR') div.style.color = 'var(--hud-danger)';
+      else if (item.status === 'RDY') div.style.color = 'var(--hud-text-dim)';
+      else if (item.status === 'DONE') div.style.color = 'var(--hud-primary)';
+      terminal.appendChild(div);
+      if (!terminal._userScrolled) requestAnimationFrame(() => { terminal.scrollTop = terminal.scrollHeight; });
+      await sleep(500);
+    }
+    await sleep(1000);
+    location.reload();
+  }
+
+
+
+
 
   // ── HACK: SCAN ─────────────────────────────────────────────
   if (cmd === 'scan') {
