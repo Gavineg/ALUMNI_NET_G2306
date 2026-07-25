@@ -66,13 +66,21 @@ function _cometCanvas(chart, linesData, scatterData, flightTime) {
   container.appendChild(cvs);
   const ctx = cvs.getContext('2d');
 
-  // 预计算节点信息，用于到达时触发
-  const nodeInfos = scatterData.map(node => {
-    const cluster = node.value[2];
+  // 按终点坐标匹配 linesData[i] → scatterData 里对应的节点
+  // linesData 和 scatterData 顺序不同（scatterData 按距离排序过），不能用下标直接对应
+  const EPS = 0.001; // 经纬度容差
+  const lineToNodeInfo = linesData.map(line => {
+    const [tlon, tlat] = line.coords[1];
+    const match = scatterData.find(s =>
+      Math.abs(s.value[0] - tlon) < EPS && Math.abs(s.value[1] - tlat) < EPS
+    );
+    if (!match) return null;
+    const cluster = match.value[2];
     const mc = cluster.universities
       ? cluster.universities.reduce((s, u) => s + (u.members?.length || 0), 0)
       : (cluster.members?.length || 1);
-    return { node, finalSize: Math.min(7 + mc * 2, 12) };
+    const nodeIdx = scatterData.indexOf(match);
+    return { node: match, finalSize: Math.min(7 + mc * 2, 12), nodeIdx };
   });
 
   const arrived = new Array(linesData.length).fill(false);
@@ -156,11 +164,11 @@ function _cometCanvas(chart, linesData, scatterData, flightTime) {
           }
         }
 
-        // 到达终点：触发节点亮起
+        // 到达终点：触发对应节点亮起（按坐标匹配，非下标）
         if (t >= 1 && !arrived[i]) {
           arrived[i] = true;
-          const info = nodeInfos[i];
-          if (info) _revealOneNode(chart, info, i, 0);
+          const info = lineToNodeInfo[i];
+          if (info) _revealOneNode(chart, info, info.nodeIdx, 0);
         }
       });
 
