@@ -132,6 +132,7 @@ function helpLines() {
     L('    42              — THE ANSWER'),
     L('    COFFEE          — BREW A CUP'),
     L('    ABOUT / CREDITS — PROJECT INFO'),
+    L('    YEARBOOK.EXE    — ???'),
     L(''),
   ];
 }
@@ -980,12 +981,25 @@ export async function runCommand(raw, ctx) {
     return [L(`WRITTEN TO ${fname}`, 'OK')];
   }
 
+  if (cmd === 'yearbook.exe' || cmd === 'yearbook') {
+    if (ctx.launchYearbook) {
+      ctx.launchYearbook();
+      return [
+        L('> YEARBOOK.EXE — LOADING ARCHIVE SYSTEM...'),
+        L('> DECRYPTING G2306 MEMORY FRAGMENTS...'),
+        L('> [OK]'),
+        L(''),
+      ];
+    }
+    return [L('> YEARBOOK.EXE: MODULE UNAVAILABLE', 'ERR')];
+  }
+
   if ((cmd === 'ls' || cmd === 'dir') && !getConnectedTarget()) {
     const fs = getFS();
     const downloads = getDownloads();
     const broken = getBroken();
     // Base files always present
-    const baseFiles = ['SECRETS.TXT', 'ORIGIN.LOG', 'README.MD', 'DO_NOT_OPEN.EXE'];
+    const baseFiles = ['SECRETS.TXT', 'ORIGIN.LOG', 'README.MD', 'DO_NOT_OPEN.EXE', 'YEARBOOK.EXE'];
     // Initial tools (can be deleted/broken)
     const tools = ['CRACK.EXE', 'EXPLOIT.EXE', 'SCAN.EXE'];
     const lines = [];

@@ -244,3 +244,23 @@ export async function updateSettings(request, db) {
   }
   return json({ ok: true });
 }
+
+// ── Memorial / Yearbook ───────────────────────────────────────
+
+export async function getMemorial(db) {
+  const docs = await db.list('memorial');
+  // memorial is stored as a single doc with id='config', value=JSON string
+  const doc = docs.find(d => d.id === 'config');
+  if (!doc || !doc.value) return json({ title: 'G2306 YEARBOOK', slides: [], boot_lines: [] });
+  try { return json(JSON.parse(doc.value)); }
+  catch { return json({ title: 'G2306 YEARBOOK', slides: [], boot_lines: [] }); }
+}
+
+export async function updateMemorial(request, db) {
+  const body = await request.json().catch(() => null);
+  if (!body) return json({ error: 'invalid json' }, 400);
+  // validate basic shape
+  if (body.slides && !Array.isArray(body.slides)) return json({ error: 'slides must be array' }, 400);
+  await db.set('memorial', 'config', { value: JSON.stringify(body) });
+  return json({ ok: true });
+}

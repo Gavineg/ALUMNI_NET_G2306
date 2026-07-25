@@ -4,7 +4,8 @@ import { filterText, listBannedWords, addBannedWord, deleteBannedWord } from './
 import {
   mapData, getMe, updateMe,
   adminListStudents, adminCreateStudent, adminUpdateStudent, adminDeleteStudent,
-  getSettings, updateSettings, hackServers, hackLoot
+  getSettings, updateSettings, hackServers, hackLoot,
+  getMemorial, updateMemorial
 } from './students.js';
 import { FirestoreDB } from './firestore.js';
 
@@ -172,6 +173,12 @@ export default {
       if (path === '/api/admin/settings') {
         if (method === 'GET') return addCors(await getSettings(db));
         if (method === 'PUT') return addCors(await updateSettings(request, db));
+      }
+
+      // Memorial / Yearbook
+      if (path === '/api/admin/memorial') {
+        if (method === 'GET') return addCors(await getMemorial(db));
+        if (method === 'PUT') return addCors(await updateMemorial(request, db));
       }
     }
 

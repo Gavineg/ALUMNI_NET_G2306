@@ -12,6 +12,7 @@ export async function initAdminPortal(container) {
       <button class="panel-tab active" data-tab="students">[STUDENTS]</button>
       <button class="panel-tab" data-tab="banned">[BANNED_WORDS]</button>
       <button class="panel-tab" data-tab="settings">[MAP_SETTINGS]</button>
+      <button class="panel-tab" data-tab="yearbook">[YEARBOOK]</button>
       <button class="panel-tab" data-tab="password">[CHANGE_PASSWORD]</button>
     </div>
     <div id="admin-tab-content"></div>
@@ -37,6 +38,7 @@ async function renderTab(container, tab) {
   if (tab === 'students')  await renderStudents(content, container);
   if (tab === 'banned')    await renderBanned(content);
   if (tab === 'settings')  await renderSettings(content);
+  if (tab === 'yearbook')  await renderYearbook(content);
   if (tab === 'password')  renderChangePassword(content);
 }
 
@@ -464,4 +466,140 @@ function renderChangePassword(content) {
       btn.disabled = false; btn.textContent = '[UPDATE_PASSWORD]';
     }
   });
+}
+
+// ── Yearbook tab (appended to admin-portal.js) ────────────────
+
+async function renderYearbook(content) {
+  const res = await apiFetch('/api/admin/memorial');
+  const cfg = res.ok ? await res.json() : {};
+  cfg.slides     = cfg.slides     || [];
+  cfg.boot_lines = cfg.boot_lines || [];
+
+  content.innerHTML = `
+    <div style="display:flex;flex-direction:column;gap:20px;max-width:760px">
+      <div class="portal-card">
+        <div class="panel-title" style="font-size:12px;margin-bottom:14px">&gt; YEARBOOK_SETTINGS</div>
+        <div class="field-group">
+          <label class="field-label">&gt; DISPLAY TITLE</label>
+          <input class="hud-input" id="ybk-title" value="${escH(cfg.title || 'G2306 YEARBOOK')}">
+        </div>
+        <div class="field-group">
+          <label class="field-label">&gt; BGM URL (MP3 / OGG direct link)</label>
+          <input class="hud-input" id="ybk-bgm" value="${escH(cfg.bgm_url || '')}" placeholder="https://...">
+        </div>
+        <div class="field-group">
+          <label class="field-label">&gt; BGM VOLUME (0.0 - 1.0)</label>
+          <input class="hud-input" id="ybk-vol" value="${escH(String(cfg.bgm_volume ?? 0.4))}" style="max-width:120px">
+        </div>
+        <div class="field-group">
+          <label class="field-label">&gt; BOOT LINES (one per line)</label>
+          <textarea class="hud-input" id="ybk-boot" rows="5"
+            style="resize:vertical;font-size:12px;line-height:1.6;text-transform:none"
+          >${escH((cfg.boot_lines || []).join('\n'))}</textarea>
+        </div>
+      </div>
+      <div class="portal-card">
+        <div class="panel-title" style="font-size:12px;margin-bottom:14px">&gt; SLIDES</div>
+        <div id="ybk-slides-list"></div>
+        <button class="hud-btn ghost" id="ybk-add-slide" style="margin-top:12px;width:100%">[+ ADD SLIDE]</button>
+      </div>
+      <button class="hud-btn full" id="ybk-save">[SAVE YEARBOOK]</button>
+      <div class="msg" id="ybk-msg"></div>
+    </div>
+  `;
+
+  let slides = cfg.slides.map(s => ({ ...s }));
+
+  function renderSlideList() {
+    const list = content.querySelector('#ybk-slides-list');
+    list.innerHTML = '';
+    if (!slides.length) {
+      list.innerHTML = '<div style="color:var(--hud-text-dim);font-size:12px;padding:8px 0">> No slides yet.</div>';
+      return;
+    }
+    slides.forEach((slide, idx) => {
+      const card = document.createElement('div');
+      card.style.cssText = 'border:1px solid var(--hud-border);padding:14px;margin-bottom:10px';
+      card.innerHTML = `
+        <div style="display:flex;gap:8px;align-items:center;margin-bottom:10px">
+          <span style="color:var(--hud-text-dim);font-size:11px;min-width:28px">[${String(idx+1).padStart(2,'0')}]</span>
+          <select class="hud-input slide-type" style="width:140px;font-size:12px">
+            <option value="text"  ${slide.type==='text'  ?'selected':''}>TEXT ONLY</option>
+            <option value="image" ${slide.type==='image' ?'selected':''}>IMAGE ONLY</option>
+            <option value="mixed" ${slide.type==='mixed' ?'selected':''}>IMAGE + TEXT</option>
+          </select>
+          <button class="hud-btn ghost slide-del" style="padding:4px 10px;font-size:11px;margin-left:auto">[DEL]</button>
+          ${idx > 0 ? '<button class="hud-btn ghost slide-up" style="padding:4px 8px;font-size:11px">[UP]</button>' : ''}
+          ${idx < slides.length-1 ? '<button class="hud-btn ghost slide-dn" style="padding:4px 8px;font-size:11px">[DN]</button>' : ''}
+        </div>
+        <div class="slide-img-row" style="display:${slide.type!=='text'?'block':'none'}">
+          <div class="field-group" style="margin-bottom:8px">
+            <label class="field-label" style="font-size:10px">&gt; IMAGE URL</label>
+            <input class="hud-input slide-url" value="${escH(slide.url||'')}" placeholder="https://..." style="font-size:12px">
+          </div>
+        </div>
+        <div class="slide-text-row" style="display:${slide.type!=='image'?'block':'none'}">
+          <div class="field-group" style="margin-bottom:8px">
+            <label class="field-label" style="font-size:10px">&gt; TEXT CONTENT</label>
+            <textarea class="hud-input slide-content" rows="2"
+              style="resize:vertical;font-size:12px;text-transform:none">${escH(slide.content||'')}</textarea>
+          </div>
+        </div>
+        <div style="display:flex;gap:10px">
+          <div class="field-group" style="flex:1;margin-bottom:0">
+            <label class="field-label" style="font-size:10px">&gt; CAPTION</label>
+            <input class="hud-input slide-caption" value="${escH(slide.caption||'')}" style="font-size:12px">
+          </div>
+          <div class="field-group" style="width:110px;margin-bottom:0">
+            <label class="field-label" style="font-size:10px">&gt; DURATION (ms)</label>
+            <input class="hud-input slide-dur" value="${escH(String(slide.duration||5000))}" style="font-size:12px">
+          </div>
+        </div>
+      `;
+      card.querySelector('.slide-type').addEventListener('change', e => {
+        slides[idx].type = e.target.value;
+        card.querySelector('.slide-img-row').style.display  = e.target.value !== 'text'  ? 'block' : 'none';
+        card.querySelector('.slide-text-row').style.display = e.target.value !== 'image' ? 'block' : 'none';
+      });
+      card.querySelector('.slide-del').addEventListener('click', () => { slides.splice(idx,1); renderSlideList(); });
+      const urlEl  = card.querySelector('.slide-url');
+      const contEl = card.querySelector('.slide-content');
+      if (urlEl)  urlEl.addEventListener('input',  e => { slides[idx].url     = e.target.value; });
+      if (contEl) contEl.addEventListener('input', e => { slides[idx].content = e.target.value; });
+      card.querySelector('.slide-caption').addEventListener('input', e => { slides[idx].caption  = e.target.value; });
+      card.querySelector('.slide-dur').addEventListener('input',     e => { slides[idx].duration = parseInt(e.target.value)||5000; });
+      const upEl = card.querySelector('.slide-up');
+      const dnEl = card.querySelector('.slide-dn');
+      if (upEl) upEl.addEventListener('click', () => { [slides[idx-1],slides[idx]]=[slides[idx],slides[idx-1]]; renderSlideList(); });
+      if (dnEl) dnEl.addEventListener('click', () => { [slides[idx],slides[idx+1]]=[slides[idx+1],slides[idx]]; renderSlideList(); });
+      list.appendChild(card);
+    });
+  }
+
+  renderSlideList();
+
+  content.querySelector('#ybk-add-slide').addEventListener('click', () => {
+    slides.push({ type: 'mixed', url: '', content: '', caption: '', duration: 5000 });
+    renderSlideList();
+  });
+
+  content.querySelector('#ybk-save').addEventListener('click', async () => {
+    const msg = content.querySelector('#ybk-msg');
+    const bootRaw = content.querySelector('#ybk-boot').value.trim();
+    const payload = {
+      title:      content.querySelector('#ybk-title').value.trim(),
+      bgm_url:    content.querySelector('#ybk-bgm').value.trim(),
+      bgm_volume: parseFloat(content.querySelector('#ybk-vol').value) || 0.4,
+      boot_lines: bootRaw ? bootRaw.split('\n').map(l => l.trimEnd()) : [],
+      slides,
+    };
+    const r = await apiFetch('/api/admin/memorial', { method: 'PUT', body: JSON.stringify(payload) });
+    if (r.ok) { msg.textContent = '> YEARBOOK SAVED [OK]'; msg.className = 'msg ok'; }
+    else      { msg.textContent = '> [ERR] SAVE FAILED';  msg.className = 'msg err'; }
+  });
+}
+
+function escH(str) {
+  return String(str).replace(/&/g,'&amp;').replace(/</g,'&lt;').replace(/>/g,'&gt;').replace(/"/g,'&quot;');
 }

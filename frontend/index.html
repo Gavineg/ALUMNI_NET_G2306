@@ -47,6 +47,7 @@
     import { initMapUI, closePanel, openPanel, clearTerminal, flyToCoord, handleCloseBtn } from './js/map-ui.js';
     import { runCommand, restoreTheme, getPromptPrefix } from './js/terminal-cmd.js';
     import { biosAppend } from './js/boot.js';
+    import { launchYearbook } from './js/yearbook.js';
 
     // 恢复上次会话的主题（在任何 DOM 操作前）
     restoreTheme();
@@ -373,6 +374,7 @@
         closePanel,
         getMapData:   () => lastMapData,
         flyTo:        (lon, lat) => flyToCoord(lon, lat),
+        launchYearbook: () => launchYearbook(),
         setFullscreen,
         getToken:     () => localStorage.getItem('g2306_token'),
         setToken:     (t) => { if (t) localStorage.setItem('g2306_token', t); else localStorage.removeItem('g2306_token'); },
