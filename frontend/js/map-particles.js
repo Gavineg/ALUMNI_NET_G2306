@@ -107,69 +107,66 @@ export async function revealTargets(chart, scatterData, linesData, colorMode) {
   // 粒子刚落地，稍等一拍再开始显示节点（让线条先稳定）
   await _sleep(120);
 
-  // 渐显：先以 symbolSize=0 注册节点，再逐渐放大到目标尺寸（ECharts 会插值动画）
+  // 计算每个节点的目标大小，复用避免重复算
+  const nodeInfos = scatterData.map(node => {
+    const cluster = node.value[2];
+    const memberCount = cluster.universities
+      ? cluster.universities.reduce((s, u) => s + (u.members?.length || 0), 0)
+      : (cluster.members?.length || 1);
+    return { node, size: Math.min(7 + memberCount * 2, 12) };
+  });
+
+  // 第一步：所有节点以 scatter + opacity:0 注册（不触发 effectScatter 的闪现）
+  chart.setOption({
+    series: nodeInfos.map(({ node, size }, idx) => ({
+      id: `target-${idx}`,
+      type: 'scatter',
+      coordinateSystem: 'geo',
+      zlevel: 3,
+      symbol: 'circle',
+      symbolSize: size,
+      animation: false,
+      data: [{ name: node.name, value: node.value,
+        itemStyle: { color: node.nodeColor, opacity: 0, shadowBlur: 0 } }],
+      label: { show: false },
+    }))
+  });
+
+  // 第二步：逐批淡入（scatter 支持 opacity 过渡动画）
   const BATCH = 4;
-  for (let i = 0; i < scatterData.length; i += BATCH) {
-    const batch = scatterData.slice(i, i + BATCH);
-
-    // 第一帧：size=0，无涟漪
+  for (let i = 0; i < nodeInfos.length; i += BATCH) {
+    const batch = nodeInfos.slice(i, i + BATCH);
     chart.setOption({
-      series: batch.map((node, j) => {
-        const idx = i + j;
-        const cluster = node.value[2];
-        const memberCount = cluster.universities
-          ? cluster.universities.reduce((s, u) => s + (u.members?.length || 0), 0)
-          : (cluster.members?.length || 1);
-        const size = Math.min(7 + memberCount * 2, 12);
-        return {
-          id: `target-${idx}`,
-          type: 'effectScatter',
-          coordinateSystem: 'geo',
-          zlevel: 3,
-          symbol: 'circle',
-          symbolSize: 0,
-          animation: false,
-          data: [{
-            name:  node.name,
-            value: node.value,
-            itemStyle: { color: node.nodeColor, shadowBlur: 0, shadowColor: node.nodeColor }
-          }],
-          showEffectOn: 'render',
-          rippleEffect: { show: false },
-          label: { show: false },
-          _targetSize: size,
-        };
-      })
+      series: batch.map(({ node, size }, j) => ({
+        id: `target-${i + j}`,
+        animation: true,
+        animationDuration: 500,
+        animationEasing: 'cubicOut',
+        data: [{ name: node.name, value: node.value,
+          itemStyle: { color: node.nodeColor, opacity: 1, shadowBlur: 14, shadowColor: node.nodeColor } }],
+      }))
     });
-
-    // 第二帧：放大到真实尺寸 + 开启涟漪
-    await _sleep(60);
-    chart.setOption({
-      series: batch.map((node, j) => {
-        const idx = i + j;
-        const cluster = node.value[2];
-        const memberCount = cluster.universities
-          ? cluster.universities.reduce((s, u) => s + (u.members?.length || 0), 0)
-          : (cluster.members?.length || 1);
-        const size = Math.min(7 + memberCount * 2, 12);
-        return {
-          id: `target-${idx}`,
-          animation: true,
-          animationDuration: 400,
-          animationEasing: 'cubicOut',
-          symbolSize: size,
-          data: [{
-            name:  node.name,
-            value: node.value,
-            itemStyle: { color: node.nodeColor, shadowBlur: 12, shadowColor: node.nodeColor }
-          }],
-          rippleEffect: { brushType: 'stroke', scale: 2.5, period: 1.8 },
-        };
-      })
-    });
-
     await _sleep(NODE_DELAY * BATCH);
   }
+
+  // 第三步：全部替换为 effectScatter 开启涟漪效果
+  await _sleep(200);
+  chart.setOption({
+    series: nodeInfos.map(({ node, size }, idx) => ({
+      id: `target-${idx}`,
+      type: 'effectScatter',
+      coordinateSystem: 'geo',
+      zlevel: 3,
+      symbol: 'circle',
+      symbolSize: size,
+      animation: false,
+      data: [{ name: node.name, value: node.value,
+        itemStyle: { color: node.nodeColor, shadowBlur: 14, shadowColor: node.nodeColor } }],
+      showEffectOn: 'render',
+      rippleEffect: { brushType: 'stroke', scale: 2.5, period: 1.8 },
+      label: { show: false },
+    }))
+  });
 }
 
 /**

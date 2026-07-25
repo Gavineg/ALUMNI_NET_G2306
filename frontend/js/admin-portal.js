@@ -536,7 +536,11 @@ async function renderYearbook(content) {
         <div class="slide-img-row" style="display:${slide.type!=='text'?'block':'none'}">
           <div class="field-group" style="margin-bottom:8px">
             <label class="field-label" style="font-size:10px">&gt; IMAGE URL</label>
-            <input class="hud-input slide-url" value="${escH(slide.url||'')}" placeholder="https://..." style="font-size:12px">
+            <input class="hud-input slide-url" value="${escH(slide.url||'')}" placeholder="https://... or drag image below" style="font-size:12px">
+          </div>
+          <div class="slide-drop-zone" style="border:1px dashed var(--hud-border);padding:12px;text-align:center;cursor:pointer;font-size:11px;color:var(--hud-text-dim);margin-bottom:8px;position:relative;min-height:60px;display:flex;align-items:center;justify-content:center;gap:10px">
+            ${slide.url ? `<img class="slide-drop-preview" src="${escH(slide.url)}" style="max-height:80px;max-width:160px;object-fit:contain;border:1px solid var(--hud-border)">` : ''}
+            <span class="slide-drop-label">${slide.url ? '> DROP TO REPLACE' : '> DRAG & DROP IMAGE HERE'}</span>
           </div>
         </div>
         <div class="slide-text-row" style="display:${slide.type!=='image'?'block':'none'}">
@@ -565,7 +569,42 @@ async function renderYearbook(content) {
       card.querySelector('.slide-del').addEventListener('click', () => { slides.splice(idx,1); renderSlideList(); });
       const urlEl  = card.querySelector('.slide-url');
       const contEl = card.querySelector('.slide-content');
-      if (urlEl)  urlEl.addEventListener('input',  e => { slides[idx].url     = e.target.value; });
+      const dropZone = card.querySelector('.slide-drop-zone');
+
+      function setSlideImage(src) {
+        slides[idx].url = src;
+        if (urlEl) urlEl.value = src;
+        const prev = dropZone.querySelector('.slide-drop-preview');
+        const lbl  = dropZone.querySelector('.slide-drop-label');
+        if (src) {
+          if (!prev) { const img = document.createElement('img'); img.className='slide-drop-preview'; img.style.cssText='max-height:80px;max-width:160px;object-fit:contain;border:1px solid var(--hud-border)'; dropZone.prepend(img); }
+          dropZone.querySelector('.slide-drop-preview').src = src;
+          if (lbl) lbl.textContent = '> DROP TO REPLACE';
+        } else {
+          if (prev) prev.remove();
+          if (lbl) lbl.textContent = '> DRAG & DROP IMAGE HERE';
+        }
+      }
+
+      if (dropZone) {
+        dropZone.addEventListener('dragover', e => { e.preventDefault(); dropZone.style.borderColor='var(--hud-primary)'; });
+        dropZone.addEventListener('dragleave', () => { dropZone.style.borderColor=''; });
+        dropZone.addEventListener('drop', e => {
+          e.preventDefault(); dropZone.style.borderColor='';
+          const file = e.dataTransfer.files[0];
+          if (!file || !file.type.startsWith('image/')) return;
+          const reader = new FileReader();
+          reader.onload = ev => setSlideImage(ev.target.result);
+          reader.readAsDataURL(file);
+        });
+        dropZone.addEventListener('click', () => {
+          const inp = document.createElement('input'); inp.type='file'; inp.accept='image/*';
+          inp.onchange = () => { const file=inp.files[0]; if (!file) return; const r=new FileReader(); r.onload=ev=>setSlideImage(ev.target.result); r.readAsDataURL(file); };
+          inp.click();
+        });
+      }
+
+      if (urlEl)  urlEl.addEventListener('input',  e => { slides[idx].url = e.target.value; setSlideImage(e.target.value); });
       if (contEl) contEl.addEventListener('input', e => { slides[idx].content = e.target.value; });
       card.querySelector('.slide-caption').addEventListener('input', e => { slides[idx].caption  = e.target.value; });
       card.querySelector('.slide-dur').addEventListener('input',     e => { slides[idx].duration = parseInt(e.target.value)||5000; });
