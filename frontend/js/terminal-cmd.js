@@ -38,6 +38,12 @@ function getConnected() { return sessionStorage.getItem('g2306_connected') || nu
 function setConnected(h){ if (h) sessionStorage.setItem('g2306_connected', h); else sessionStorage.removeItem('g2306_connected'); }
 function getFirewall()  { try { return JSON.parse(sessionStorage.getItem('g2306_firewall') || '{}'); }  catch { return {}; } }
 function setFirewall(m) { sessionStorage.setItem('g2306_firewall', JSON.stringify(m)); }
+export function isUnlocked() { return sessionStorage.getItem('g2306_unlocked') === '1'; }
+export function setUnlocked() { sessionStorage.setItem('g2306_unlocked', '1'); }
+
+// Exported so index.html can build the right CMD_LIST
+export const BASIC_CMDS   = ['help','whoami','date','time','stats','find','reboot','clear','cls','fullscreen','fs','exit','quit','close','matrix','konami','sl','fortune','42','coffee','about','credits','yearbook','yearbook.exe','ls','dir'];
+export const ADVANCED_CMDS = ['login','logout','portal','dashboard','cd','me','set','passwd','roster','classmates','scan','connect','port','crack','exploit','download','disconnect','apply','themes','restore','vim','vi','nano','mkdir','touch','echo','rm','del','cat','reinstall','hack','sudo','su'];
 
 // crack challenge state (memory only, not persisted)
 let crackState = null; // {hostname, studentId, port, cracked}
@@ -237,6 +243,81 @@ export async function runCommand(raw, ctx) {
     return [];
   }
 
+  // ── Always-visible easter eggs ────────────────────────────
+  if (cmd === 'matrix') return [L('WAKE UP...'), L('THE MATRIX HAS YOU.'), L('FOLLOW THE WHITE RABBIT.'), L('01000111 00110010 00110011 00110000 00110110')];
+  if (cmd === 'sl')   return [L('🚂 CHOO CHOO...'), L('A TRAIN PASSES THROUGH THE TERMINAL.')];
+  if (cmd === 'fortune') return [L(pick(FORTUNES))];
+  if (cmd === '42')   return [L('THE ANSWER TO LIFE, THE UNIVERSE, AND EVERYTHING.')];
+  if (cmd === 'coffee') return [L('BREWING...'), L("418 I'M A TEAPOT", 'ERR'), L('(THIS TERMINAL CANNOT MAKE COFFEE)')];
+  if (cmd === 'about' || cmd === 'credits') return [L('ALUMNI_NET :: G2306'), L('A CYBERPUNK CLASSMATE LOCATOR.'), L('BUILT WITH ECHARTS, CLOUDFLARE, FIREBASE, AND SPITE.'), L('THANK YOU FOR VISITING.', 'OK')];
+  if (cmd === 'hack') return [L(`INITIATING INTRUSION ON "${arg||'UNKNOWN TARGET'}"...`), L('JUST KIDDING. USE SCAN / CONNECT / CRACK / EXPLOIT.', 'OK')];
+  if (cmd === 'sudo') return [L(`SUDO ${arg.toUpperCase()||'(NOTHING)'}`), L('[SUDO] PASSWORD FOR GUEST: ********'), L('PERMISSION DENIED. NICE TRY.', 'ERR')];
+  if (cmd === 'su')   return [L('ACCESS DENIED — USE THE LOGIN PORTAL.', 'ERR')];
+
+  if (cmd === 'yearbook.exe' || cmd === 'yearbook') {
+    if (ctx.launchYearbook) {
+      ctx.launchYearbook();
+      return [
+        L('> YEARBOOK.EXE — LOADING ARCHIVE SYSTEM...'),
+        L('> DECRYPTING G2306 MEMORY FRAGMENTS...'),
+        L('> [OK]'),
+        L(''),
+      ];
+    }
+    return [L('> YEARBOOK.EXE: MODULE UNAVAILABLE', 'ERR')];
+  }
+
+  if (cmd === 'reboot') {
+    const force = arg1 === '-f';
+    const lines = [
+      L('> Broadcast message from root@localhost'),
+      L(`> (/dev/pts/0) at ${new Date().toString().toUpperCase()}...`),
+      L(force
+        ? '> The system is going down for reboot NOW!  [FORCE: cache purged]'
+        : '> The system is going down for reboot NOW!'),
+      L(''),
+    ];
+    setTimeout(() => {
+      if (force) sessionStorage.removeItem('g2306_map_cache');
+      window.location.href = window.location.pathname + (force ? '?_=' + Date.now() : '');
+    }, 1200);
+    return lines;
+  }
+
+  // ── KONAMI unlock gate ─────────────────────────────────────
+  if (cmd === 'konami') {
+    await ctx.print([
+      L('↑ ↑ ↓ ↓ ← → ← → B A'),
+      L('> CHEAT CODE DETECTED.', 'RDY'),
+      L('> WARNING: This will unlock all system commands.'),
+      L('> Are you sure? Type YES to confirm:'),
+    ]);
+    const c1 = await ctx.promptLine('> ');
+    if (c1?.trim().toUpperCase() !== 'YES') return [L('ABORTED.', 'ERR')];
+    await ctx.print([L('> CONFIRM AGAIN — type OVERRIDE to proceed:')]);
+    const c2 = await ctx.promptLine('> ');
+    if (c2?.trim().toUpperCase() !== 'OVERRIDE') return [L('ABORTED.', 'ERR')];
+
+    setUnlocked();
+    return [
+      L('> LOADING SYSTEM MODULES...'),
+      L('  [██        ] 20%  — auth.sys'),
+      L('  [████      ] 40%  — hack.bin'),
+      L('  [██████    ] 60%  — roster.db'),
+      L('  [████████  ] 80%  — cmd.dll'),
+      L('  [██████████] 100% — DONE', 'OK'),
+      L(''),
+      L('+30 LIVES GRANTED.', 'OK'),
+      L('FULL COMMAND SET UNLOCKED.', 'OK'),
+      L(''),
+      ...fullHelpLines()
+    ];
+  }
+
+  if (!isUnlocked()) {
+    return [L(`'${cmdRaw}' IS NOT RECOGNIZED. TYPE help FOR COMMANDS.`, 'ERR')];
+  }
+
   // ── AUTH: LOGIN ────────────────────────────────────────────
   if (cmd === 'login') {
     if (ctx.getToken()) return [L('ALREADY AUTHENTICATED. USE LOGOUT FIRST.', 'ERR')];
@@ -407,23 +488,6 @@ export async function runCommand(raw, ctx) {
     lines.push(L('> TYPE "EXIT" TO RETURN TO MAP'));
     return lines;
   }
-  if (cmd === 'reboot') {
-    const force = arg1 === '-f';
-    const lines = [
-      L('> Broadcast message from root@localhost'),
-      L(`> (/dev/pts/0) at ${new Date().toString().toUpperCase()}...`),
-      L(force
-        ? '> The system is going down for reboot NOW!  [FORCE: cache purged]'
-        : '> The system is going down for reboot NOW!'),
-      L(''),
-    ];
-    setTimeout(() => {
-      if (force) sessionStorage.removeItem('g2306_map_cache');
-      window.location.href = window.location.pathname + (force ? '?_=' + Date.now() : '');
-    }, 1200);
-    return lines;
-  }
-
 
 
 
@@ -981,19 +1045,6 @@ export async function runCommand(raw, ctx) {
     return [L(`WRITTEN TO ${fname}`, 'OK')];
   }
 
-  if (cmd === 'yearbook.exe' || cmd === 'yearbook') {
-    if (ctx.launchYearbook) {
-      ctx.launchYearbook();
-      return [
-        L('> YEARBOOK.EXE — LOADING ARCHIVE SYSTEM...'),
-        L('> DECRYPTING G2306 MEMORY FRAGMENTS...'),
-        L('> [OK]'),
-        L(''),
-      ];
-    }
-    return [L('> YEARBOOK.EXE: MODULE UNAVAILABLE', 'ERR')];
-  }
-
   if ((cmd === 'ls' || cmd === 'dir') && !getConnectedTarget()) {
     const fs = getFS();
     const downloads = getDownloads();
@@ -1115,45 +1166,7 @@ export async function runCommand(raw, ctx) {
     ];
   }
 
-  if (cmd === 'matrix') return [L('WAKE UP...'), L('THE MATRIX HAS YOU.'), L('FOLLOW THE WHITE RABBIT.'), L('01000111 00110010 00110011 00110000 00110110')];
-  if (cmd === 'hack') return [L(`INITIATING INTRUSION ON "${arg||'UNKNOWN TARGET'}"...`), L('JUST KIDDING. USE SCAN / CONNECT / CRACK / EXPLOIT.', 'OK')];
-  if (cmd === 'sudo') return [L(`SUDO ${arg.toUpperCase()||'(NOTHING)'}`), L('[SUDO] PASSWORD FOR GUEST: ********'), L('PERMISSION DENIED. NICE TRY.', 'ERR')];
-  if (cmd === 'su')   return [L('ACCESS DENIED — USE THE LOGIN PORTAL.', 'ERR')];
-  if (cmd === 'rm')   return arg.replace(/\s+/g,'').includes('-rf/') ? [L('NICE TRY.'), L('FILESYSTEM PROTECTED BY FRIENDSHIP.', 'OK')] : [L('RM: MISSING OPERAND', 'ERR')];
-  if (cmd === 'konami') {
-    await ctx.print([
-      L('↑ ↑ ↓ ↓ ← → ← → B A'),
-      L('> CHEAT CODE DETECTED.', 'RDY'),
-      L('> WARNING: This will unlock all system commands.'),
-      L('> Are you sure? Type YES to confirm:'),
-    ]);
-    const c1 = await ctx.promptLine('> ');
-    if (c1?.trim().toUpperCase() !== 'YES') return [L('ABORTED.', 'ERR')];
-    await ctx.print([L('> CONFIRM AGAIN — type OVERRIDE to proceed:')]);
-    const c2 = await ctx.promptLine('> ');
-    if (c2?.trim().toUpperCase() !== 'OVERRIDE') return [L('ABORTED.', 'ERR')];
-
-    return [
-      L('> LOADING SYSTEM MODULES...'),
-      L('  [██        ] 20%  — auth.sys'),
-      L('  [████      ] 40%  — hack.bin'),
-      L('  [██████    ] 60%  — roster.db'),
-      L('  [████████  ] 80%  — cmd.dll'),
-      L('  [██████████] 100% — DONE', 'OK'),
-      L(''),
-      L('+30 LIVES GRANTED.', 'OK'),
-      L('FULL COMMAND SET UNLOCKED.', 'OK'),
-      L(''),
-      ...fullHelpLines()
-    ];
-  }
-  if (cmd === 'sl')   return [L('🚂 CHOO CHOO...'), L('A TRAIN PASSES THROUGH THE TERMINAL.')];
-  if (cmd === 'fortune') return [L(pick(FORTUNES))];
-  if (cmd === '42')   return [L('THE ANSWER TO LIFE, THE UNIVERSE, AND EVERYTHING.')];
-  if (cmd === 'coffee') return [L('BREWING...'), L("418 I'M A TEAPOT", 'ERR'), L('(THIS TERMINAL CANNOT MAKE COFFEE)')];
-  if (cmd === 'about' || cmd === 'credits') return [L('ALUMNI_NET :: G2306'), L('A CYBERPUNK CLASSMATE LOCATOR.'), L('BUILT WITH ECHARTS, CLOUDFLARE, FIREBASE, AND SPITE.'), L('THANK YOU FOR VISITING.', 'OK')];
-
-  return [L(`'${cmdRaw.toUpperCase()}' IS NOT RECOGNIZED. TYPE HELP FOR COMMANDS.`, 'ERR')];
+  return [L(`'${cmdRaw}' IS NOT RECOGNIZED. TYPE help FOR COMMANDS.`, 'ERR')];
 }
 
 // ── Helpers ───────────────────────────────────────────────────

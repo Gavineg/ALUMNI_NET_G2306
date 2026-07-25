@@ -107,10 +107,12 @@ export async function revealTargets(chart, scatterData, linesData, colorMode) {
   // 粒子刚落地，稍等一拍再开始显示节点（让线条先稳定）
   await _sleep(120);
 
-  // 逐个渐显（近→远），每4个批量 setOption
+  // 渐显：先以 symbolSize=0 注册节点，再逐渐放大到目标尺寸（ECharts 会插值动画）
   const BATCH = 4;
   for (let i = 0; i < scatterData.length; i += BATCH) {
     const batch = scatterData.slice(i, i + BATCH);
+
+    // 第一帧：size=0，无涟漪
     chart.setOption({
       series: batch.map((node, j) => {
         const idx = i + j;
@@ -125,18 +127,47 @@ export async function revealTargets(chart, scatterData, linesData, colorMode) {
           coordinateSystem: 'geo',
           zlevel: 3,
           symbol: 'circle',
+          symbolSize: 0,
+          animation: false,
+          data: [{
+            name:  node.name,
+            value: node.value,
+            itemStyle: { color: node.nodeColor, shadowBlur: 0, shadowColor: node.nodeColor }
+          }],
+          showEffectOn: 'render',
+          rippleEffect: { show: false },
+          label: { show: false },
+          _targetSize: size,
+        };
+      })
+    });
+
+    // 第二帧：放大到真实尺寸 + 开启涟漪
+    await _sleep(60);
+    chart.setOption({
+      series: batch.map((node, j) => {
+        const idx = i + j;
+        const cluster = node.value[2];
+        const memberCount = cluster.universities
+          ? cluster.universities.reduce((s, u) => s + (u.members?.length || 0), 0)
+          : (cluster.members?.length || 1);
+        const size = Math.min(7 + memberCount * 2, 12);
+        return {
+          id: `target-${idx}`,
+          animation: true,
+          animationDuration: 400,
+          animationEasing: 'cubicOut',
           symbolSize: size,
           data: [{
             name:  node.name,
             value: node.value,
             itemStyle: { color: node.nodeColor, shadowBlur: 12, shadowColor: node.nodeColor }
           }],
-          showEffectOn: 'render',
-          rippleEffect: { show: false },
-          label: { show: false }
+          rippleEffect: { brushType: 'stroke', scale: 2.5, period: 1.8 },
         };
       })
     });
+
     await _sleep(NODE_DELAY * BATCH);
   }
 }

@@ -45,7 +45,7 @@
     import { fetchMapData } from './js/map-data.js';
     import { launchParticles, revealTargets, startNoiseLayer } from './js/map-particles.js';
     import { initMapUI, closePanel, openPanel, clearTerminal, flyToCoord, handleCloseBtn } from './js/map-ui.js';
-    import { runCommand, restoreTheme, getPromptPrefix } from './js/terminal-cmd.js';
+    import { runCommand, restoreTheme, getPromptPrefix, isUnlocked, BASIC_CMDS, ADVANCED_CMDS } from './js/terminal-cmd.js';
     import { biosAppend } from './js/boot.js';
     import { launchYearbook } from './js/yearbook.js';
 
@@ -279,15 +279,14 @@
       if (e.key === 'Tab') {
         e.preventDefault();
         const cur = fsInput.value.trim().toLowerCase();
-        if (tabBase === null) { tabBase = cur; tabMatches = CMD_LIST.filter(c => c.startsWith(tabBase)); tabPos = 0; }
+        if (tabBase === null) { tabBase = cur; tabMatches = getCmdList().filter(c => c.startsWith(tabBase)); tabPos = 0; }
         if (!tabMatches.length) return;
-        fsInput.value = tabMatches[tabPos % tabMatches.length].toUpperCase();
+        fsInput.value = tabMatches[tabPos % tabMatches.length];
         tabPos++;
         return;
       }
       if (e.key !== 'Tab') tabBase = null;
 
-      // pendingResolve（全屏下的多步骤输入走 dosInput，这里只处理 Enter 命令）
       if (e.key !== 'Enter') return;
       if (commandRunning) { fsInput.value = ''; return; }
 
@@ -319,12 +318,7 @@
     let maskValue = '';        // 当前密码字段的真实值
 
     // 命令历史 & Tab 补全
-    const CMD_LIST = ['help','whoami','date','stats','find','ls','dir','cat','matrix',
-                      'hack','sudo','konami','sl','fortune','42','coffee','about','credits',
-                      'clear','cls','exit','quit','login','logout','me','set','passwd',
-                      'scan','connect','port','crack','exploit','download','disconnect',
-                      'apply','themes','restore','roster','vim','vi','mkdir','touch','rm',
-                      'fullscreen','fs'];
+    const getCmdList = () => isUnlocked() ? [...BASIC_CMDS, ...ADVANCED_CMDS] : BASIC_CMDS;
     let history = [], histIdx = -1, tabBase = null, tabMatches = [], tabPos = 0;
 
     async function showDosTerminal() {
@@ -495,9 +489,9 @@
       if (e.key === 'Tab') {
         e.preventDefault();
         const cur = dosInput.value.trim().toLowerCase();
-        if (tabBase === null) { tabBase = cur; tabMatches = CMD_LIST.filter(c => c.startsWith(tabBase)); tabPos = 0; }
+        if (tabBase === null) { tabBase = cur; tabMatches = getCmdList().filter(c => c.startsWith(tabBase)); tabPos = 0; }
         if (!tabMatches.length) return;
-        dosInput.value = tabMatches[tabPos % tabMatches.length].toUpperCase();
+        dosInput.value = tabMatches[tabPos % tabMatches.length];
         tabPos++;
         return;
       }
