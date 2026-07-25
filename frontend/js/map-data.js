@@ -53,13 +53,29 @@ function buildMapResult(data) {
     };
   });
 
-  // 连线只连到集群中心点
-  const linesData = clusters.map(c => ({
-    coords:    [originCoords, [c.longitude, c.latitude]],
-    nodeColor: scatterData.find(s => s.name === c.label)?.nodeColor || '#b8ff47'
+  // 节点与原点距离过近时，沿连线方向外推，避免与原点图标重叠
+  const PUSH_THRESH = 0.9;  // 经纬度距离阈值（约 100km）
+  const PUSH_DIST   = 1.2;  // 推开距离（经纬度，约 130km）
+  const [ox, oy] = originCoords;
+  scatterData.forEach(node => {
+    const nx = node.value[0], ny = node.value[1];
+    const dist = Math.hypot(nx - ox, ny - oy);
+    if (dist < PUSH_THRESH) {
+      const scale = dist < 0.001 ? 1 : 1 / dist; // 单位向量
+      node.value = [
+        nx + (nx - ox) * scale * PUSH_DIST,
+        ny + (ny - oy) * scale * PUSH_DIST,
+        node.value[2]
+      ];
+    }
+  });
+
+  // 连线终点用偏移后的节点坐标，保持连线与节点一致
+  const linesData = scatterData.map(node => ({
+    coords:    [originCoords, [node.value[0], node.value[1]]],
+    nodeColor: node.nodeColor
   }));
 
-  const [ox, oy] = originCoords;
   scatterData.sort((a, b) =>
     Math.hypot(a.value[0] - ox, a.value[1] - oy) -
     Math.hypot(b.value[0] - ox, b.value[1] - oy)
