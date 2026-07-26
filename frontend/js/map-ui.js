@@ -47,7 +47,7 @@ export function initMapUI(chart, initZoom, initCenter, originInfo) {
 
   chart.on('click', params => {
     // origin node click
-    if (params.seriesId === 'origin') {
+    if (params.seriesId === 'origin' || params.seriesId === 'origin-hit') {
       if (clickThrottle) clearTimeout(clickThrottle);
       clickThrottle = setTimeout(() => {
         clickThrottle = null;

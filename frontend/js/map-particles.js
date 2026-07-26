@@ -53,7 +53,18 @@ function _animOrigin(chart, symbol, originCoords, finalSize) {
       data: [{ name: 'ORIGIN', value: originCoords,
         itemStyle: { ...ICON_COLOR, opacity: op } }]
     }]});
-    if (t < 1) requestAnimationFrame(frame);
+    if (t < 1) {
+      requestAnimationFrame(frame);
+    } else {
+      // Transparent hit-area circle for origin, same 3.5x multiplier as nodes
+      chart.setOption({ series: [{
+        id: 'origin-hit', type: 'scatter', coordinateSystem: 'geo', zlevel: 6,
+        symbol: 'circle', symbolSize: finalSize * 3.5, animation: false,
+        data: [{ name: 'ORIGIN', value: originCoords }],
+        itemStyle: { color: 'transparent', borderWidth: 0, opacity: 0 },
+        emphasis: { disabled: true }, label: { show: false }, silent: false,
+      }]});
+    }
   }
   requestAnimationFrame(frame);
 }

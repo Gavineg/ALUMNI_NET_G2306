@@ -3,7 +3,7 @@ import { handleGeocode } from './geocode.js';
 import { filterText, listBannedWords, addBannedWord, deleteBannedWord } from './profanity.js';
 import {
   mapData, getMe, updateMe,
-  adminListStudents, adminCreateStudent, adminUpdateStudent, adminDeleteStudent,
+  adminListStudents, adminCreateStudent, adminUpdateStudent, adminDeleteStudent, adminGetStudent,
   getSettings, updateSettings, hackServers, hackLoot,
   getMemorial, updateMemorial,
   listTeachers, createTeacher, updateTeacher, deleteTeacher,
@@ -157,6 +157,7 @@ export default {
       const studentMatch = path.match(/^\/api\/admin\/students\/([^/]+)$/);
       if (studentMatch) {
         const id = studentMatch[1];
+        if (method === 'GET')    return addCors(await adminGetStudent(id, db));
         if (method === 'PUT')    return addCors(await adminUpdateStudent(id, request, db));
         if (method === 'DELETE') return addCors(await adminDeleteStudent(id, db));
       }

@@ -57,7 +57,7 @@ async function renderStudents(content, root) {
       <table class="hud-table" id="students-table">
         <thead><tr>
           <th>ID</th><th>USERNAME</th><th>NAME</th>
-          <th>UNIVERSITY</th><th>MAJOR</th><th>READY_FOR_FOOD</th><th>ROLE</th>
+          <th>UNIVERSITY</th><th>MAJOR</th><th>READY_FOR_FOOD</th><th>ROLE</th><th>IMG</th>
         </tr></thead>
         <tbody id="students-tbody"></tbody>
       </table>
@@ -92,6 +92,7 @@ function renderStudentRows(content, list) {
         ${s.can_cengfan ? '[YES]' : '[NO]'}
       </td>
       <td>${s.is_admin ? '[ADM]' : s.is_teacher ? '[TCH]' : '—'}</td>
+      <td style="color:var(--hud-primary)">${s.has_avatar ? '[IMG]' : '—'}</td>
     </tr>
   `).join('');
 
@@ -151,13 +152,10 @@ function openStudentModal(root, student) {
       <label class="field-label">&gt; CUSTOM_STATUS</label>
       <input class="hud-input" id="m-status" value="${student?.status_text || ''}">
     </div>
-    ${!isNew && student?.avatar_url ? `
-    <div class="field-group">
+    ${!isNew && student?.has_avatar ? `
+    <div class="field-group" id="m-avatar-section">
       <label class="field-label">&gt; UPLOADED_IMAGE</label>
-      <div style="position:relative;display:inline-block">
-        <img src="${student.avatar_url}" style="display:block;max-width:100%;max-height:160px;border:1px solid var(--hud-border)">
-        <button id="m-del-avatar" style="position:absolute;top:4px;right:4px;background:rgba(0,0,0,0.7);border:1px solid var(--hud-danger);color:var(--hud-danger);font-size:10px;padding:2px 7px;cursor:pointer">[DELETE]</button>
-      </div>
+      <div style="font-size:11px;color:var(--hud-text-dim)">&gt; LOADING...</div>
     </div>` : ''}
     <div class="field-group">
       <div style="display:flex;gap:16px;align-items:center;flex-wrap:wrap">
@@ -272,13 +270,23 @@ function openStudentModal(root, student) {
 
   box.querySelector('#m-close-btn').addEventListener('click', () => { modal.style.display = 'none'; });
 
-  if (!isNew && student?.avatar_url) {
-    box.querySelector('#m-del-avatar')?.addEventListener('click', async () => {
-      if (!confirm('DELETE THIS IMAGE?')) return;
-      const res = await apiFetch(`/api/admin/students/${editingId}`, { method: 'PUT', body: JSON.stringify({ avatar_url: null }) });
-      if (res.ok) {
-        box.querySelector('#m-del-avatar').closest('.field-group').remove();
-      }
+  if (!isNew && student?.has_avatar) {
+    apiFetch(`/api/admin/students/${editingId}`).then(async r => {
+      if (!r.ok) return;
+      const full = await r.json();
+      const section = box.querySelector('#m-avatar-section');
+      if (!section || !full.avatar_url) return;
+      section.innerHTML = `
+        <label class="field-label">&gt; UPLOADED_IMAGE</label>
+        <div style="position:relative;display:inline-block">
+          <img src="${full.avatar_url}" style="display:block;max-width:100%;max-height:160px;border:1px solid var(--hud-border)">
+          <button id="m-del-avatar" style="position:absolute;top:4px;right:4px;background:rgba(0,0,0,0.7);border:1px solid var(--hud-danger);color:var(--hud-danger);font-size:10px;padding:2px 7px;cursor:pointer">[DELETE]</button>
+        </div>`;
+      box.querySelector('#m-del-avatar').addEventListener('click', async () => {
+        if (!confirm('DELETE THIS IMAGE?')) return;
+        const res = await apiFetch(`/api/admin/students/${editingId}`, { method: 'PUT', body: JSON.stringify({ avatar_url: null }) });
+        if (res.ok) section.remove();
+      });
     });
   }
 

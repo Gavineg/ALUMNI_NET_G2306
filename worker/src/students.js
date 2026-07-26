@@ -122,10 +122,18 @@ export async function adminListStudents(db) {
   const students = await db.list('students');
   return json(students.map(s => {
     const { id, username, display_name, university, major, city, longitude, latitude, status_text, can_cengfan, is_admin, is_teacher, created_at,
-            server_hostname, server_ip, server_theme, server_difficulty, server_ports, hack_loot } = s;
+            server_hostname, server_ip, server_theme, server_difficulty, server_ports, hack_loot, avatar_url } = s;
     return { id, username, display_name, university, major, city, longitude, latitude, status_text, can_cengfan, is_admin, is_teacher, created_at,
-             server_hostname, server_ip, server_theme, server_difficulty, server_ports, hack_loot };
+             server_hostname, server_ip, server_theme, server_difficulty, server_ports, hack_loot,
+             has_avatar: !!avatar_url };
   }));
+}
+
+export async function adminGetStudent(id, db) {
+  const s = await db.get('students', id);
+  if (!s) return json({ error: 'not found' }, 404);
+  const { password_hash, salt, ...rest } = s;
+  return json(rest);
 }
 
 export async function adminCreateStudent(request, db) {
