@@ -272,8 +272,19 @@
     let lastMapData = null;
     boot().then(() => {}); // 保持原有启动流程
 
+    // ── 全局防重复点击 ────────────────────────────────────────
+    const _btnCooldown = new WeakMap();
+    document.addEventListener('click', e => {
+      const btn = e.target.closest('[onclick], button, .close-btn, #reset-btn, #dos-input-wrap');
+      if (!btn) return;
+      if (_btnCooldown.get(btn)) { e.stopImmediatePropagation(); e.preventDefault(); return; }
+      _btnCooldown.set(btn, true);
+      setTimeout(() => _btnCooldown.delete(btn), 600);
+    }, true);
+
     window.resetMap = async function() {
       closePanel();
+      chart.setOption({ geo: { roam: false } });
 
       // ── 1. 淡出所有内容 series + canvas 虚线 ─────────────────
       const cometCvs = document.getElementById('comet-canvas');
@@ -367,7 +378,7 @@
         await new Promise(r => setTimeout(r, STEP_MS));
       }
 
-      // 淡入完成：开启 pulse-lines（粒子从出发点开始跑）+ 恢复涟漪参数
+      // 淡入完成：开启 pulse-lines（粒子从出发点开始跑）+ 恢复涟漪参数 + 恢复 roam
       chart.setOption({ series: [
         { id: 'pulse-lines', effect: { show: true, symbolSize: 3 } },
         { id: 'origin', rippleEffect: { brushType: 'stroke', scale: 3, period: 2 } },
@@ -375,6 +386,7 @@
           id: `target-${n}`, rippleEffect: { brushType: 'stroke', scale: 2.5, period: 1.8 }
         }))
       ]});
+      chart.setOption({ geo: { roam: true } });
 
       requestAnimationFrame(() => dosInput.focus());
     };
