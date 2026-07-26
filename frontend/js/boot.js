@@ -124,6 +124,10 @@ export async function biosAppend(terminal, lines, speed = 65) {
       div.appendChild(span);
     }
 
+    if (typeof item.live === 'function') {
+      item.live(div);
+    }
+
     if (!terminal._userScrolled) scheduleScroll(terminal);
     await asleep(lineDelay);
   }
