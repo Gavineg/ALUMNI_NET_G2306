@@ -173,8 +173,10 @@ function _cometCanvas(chart, linesData, scatterData, flightTime) {
             ctx.save();
             ctx.strokeStyle = `rgba(184,255,71,${alpha.toFixed(3)})`;
             ctx.lineWidth = width;
-            ctx.shadowBlur = frac * 8;
-            ctx.shadowColor = '#b8ff47';
+            if (!isMobile) {
+              ctx.shadowBlur = frac * 8;
+              ctx.shadowColor = '#b8ff47';
+            }
             ctx.beginPath();
             ctx.moveTo(ax, ay);
             ctx.lineTo(bx, by);
@@ -445,18 +447,15 @@ function _staticLineStyle(mode) {
 export async function revealTargets(chart, scatterData, linesData, colorMode, opts = {}) {
   const { nodeAnim = 'expand', lineAnim = 'comet' } = opts;
 
-  // comet 模式：节点已由 _cometCanvas 触发，只需启动持续小彗星（手机端跳过，省性能）
+  // comet 模式：节点已由 _cometCanvas 触发，只需启动持续小彗星
   if (lineAnim === 'comet') {
     await _sleep(120);
-    const mobile = window.innerWidth < 768 || 'ontouchstart' in window;
-    if (!mobile) {
-      chart.setOption({ series: [{
-        id: 'pulse-lines', type: 'lines', coordinateSystem: 'geo', zlevel: 1,
-        effect: { show: true, period: 3.5, trailLength: 0.3,
-                  color: 'rgba(184,255,71,0.6)', symbolSize: 3 },
-        lineStyle: { color: 'rgba(0,0,0,0)', width: 0, curveness: 0.22 }, data: linesData
-      }]});
-    }
+    chart.setOption({ series: [{
+      id: 'pulse-lines', type: 'lines', coordinateSystem: 'geo', zlevel: 1,
+      effect: { show: true, period: 3.5, trailLength: 0.3,
+                color: 'rgba(184,255,71,0.6)', symbolSize: 3 },
+      lineStyle: { color: 'rgba(0,0,0,0)', width: 0, curveness: 0.22 }, data: linesData
+    }]});
     return;
   }
 

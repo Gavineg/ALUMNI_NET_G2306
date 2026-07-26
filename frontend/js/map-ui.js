@@ -56,6 +56,7 @@ export function initMapUI(chart, initZoom, initCenter) {
     if (clickThrottle) clearTimeout(clickThrottle);
     clickThrottle = setTimeout(() => {
       clickThrottle = null;
+      chartRef.setOption({ geo: { roam: false } });
       const cluster = params.data.value[2];
       navStack = [];
       if (cluster.universities?.length > 1) {
@@ -258,6 +259,7 @@ export async function closePanel() {
   setTimeout(() => {
     panel.classList.remove('active', 'closing');
   }, 320);
+  if (chartRef) chartRef.setOption({ geo: { roam: true } });
 }
 
 /*

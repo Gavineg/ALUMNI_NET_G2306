@@ -63,16 +63,6 @@ body {
   opacity: 0.045;
 }
 
-/* 手机端：关掉 scanline 和网格背景，减少合成层开销 */
-@media (max-width: 767px) {
-  body {
-    background-image: none;
-  }
-  .scanline {
-    display: none;
-  }
-}
-
 /* 通用滚动条 */
 ::-webkit-scrollbar { width: 4px; height: 4px; }
 ::-webkit-scrollbar-track { background: transparent; }
