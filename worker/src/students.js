@@ -21,9 +21,10 @@ function json(data, status = 200) {
 
 // GET /api/map/data  — 公开，返回地图渲染所需的聚合数据
 export async function mapData(db) {
-  const [allStudents, settingsDocs] = await Promise.all([
+  const [allStudents, settingsDocs, teacherDocs] = await Promise.all([
     db.list('students'),
-    db.list('settings')
+    db.list('settings'),
+    db.list('teachers')
   ]);
 
   // 合并默认值
@@ -57,7 +58,10 @@ export async function mapData(db) {
       longitude: parseFloat(settingsMap.originLon),
       latitude:  parseFloat(settingsMap.originLat),
       school:    settingsMap.originSchool || '',
-      teachers:  (() => { try { return JSON.parse(settingsMap.originTeachers || '[]'); } catch { return []; } })()
+      teachers:  teacherDocs.map(d => ({
+        id: d.id, name: d.name || '', subject: d.subject || '',
+        contact: d.contact || '', note: d.note || ''
+      }))
     },
     colorMode:    settingsMap.colorMode,
     unifiedColor: settingsMap.unifiedColor,
@@ -250,7 +254,7 @@ export async function updateSettings(request, db) {
   const body = await request.json().catch(() => null);
   if (!body) return json({ error: 'invalid json' }, 400);
 
-  const allowed = ['colorMode', 'unifiedColor', 'originName', 'originLon', 'originLat', 'originIcon', 'lineAnim', 'nodeAnim', 'originSchool', 'originTeachers'];
+  const allowed = ['colorMode', 'unifiedColor', 'originName', 'originLon', 'originLat', 'originIcon', 'lineAnim', 'nodeAnim', 'originSchool'];
   for (const k of allowed) {
     if (k in body) {
       await db.set('settings', k, { value: String(body[k]) });
