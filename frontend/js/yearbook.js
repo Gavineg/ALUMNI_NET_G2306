@@ -15,7 +15,7 @@ export async function launchYearbook() {
   // 拉取配置
   let cfg = { title: 'G2306 YEARBOOK', slides: [], boot_lines: [], bgm_url: '', bgm_volume: 0.4 };
   try {
-    const res = await fetch(`${API_BASE}/api/admin/memorial`);
+    const res = await fetch(`${API_BASE}/api/memorial`);
     if (res.ok) cfg = { ...cfg, ...await res.json() };
   } catch {}
 

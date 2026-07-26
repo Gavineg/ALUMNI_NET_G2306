@@ -145,6 +145,25 @@ export default {
       return json({ ok: true });
     }
 
+    // ── Public: yearbook ──────────────────────────────────────
+    if (path === '/api/memorial' && method === 'GET') {
+      return addCors(await getMemorial(db));
+    }
+
+    // Debug: GET /api/memorial/debug (admin token optional but not required)
+    if (path === '/api/memorial/debug' && method === 'GET') {
+      const docs = await db.list('memorial');
+      const imgDocs = await db.list('memorial_images');
+      const config = docs.find(d => d.id === 'config');
+      let cfg = null;
+      try { cfg = config?.value ? JSON.parse(config.value) : null; } catch {}
+      return addCors(new Response(JSON.stringify({
+        config_found: !!config,
+        slides_in_config: cfg?.slides?.map(s => ({ type: s.type, img_id: s.img_id || null, has_url: !!s.url, content_len: s.content?.length || 0 })) || [],
+        image_docs: imgDocs.map(d => ({ id: d.id, data_len: d.data?.length || 0 })),
+      }), { headers: { 'Content-Type': 'application/json', ...CORS } }));
+    }
+
     // ── Admin guard ────────────────────────────────────────────
     if (path.startsWith('/api/admin/')) {
       if (!user?.admin) return json({ error: 'forbidden' }, 403);
@@ -202,10 +221,9 @@ export default {
         return addCors(await syncTeachersFromStudents(db));
       }
 
-      // Memorial / Yearbook
-      if (path === '/api/admin/memorial') {
-        if (method === 'GET') return addCors(await getMemorial(db));
-        if (method === 'PUT') return addCors(await updateMemorial(request, db));
+      // Memorial / Yearbook — write only
+      if (path === '/api/admin/memorial' && method === 'PUT') {
+        return addCors(await updateMemorial(request, db));
       }
     }
 
