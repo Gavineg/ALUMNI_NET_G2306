@@ -214,7 +214,7 @@
       subEl.textContent = '';
       await typeWrite(subEl, 'ALL TARGETS LOCKED. SYSTEM READY.', 12);
 
-      initMapUI(chart, initZoom, initCenter);
+      initMapUI(chart, initZoom, initCenter, { name: mapData.origin?.name, school: mapData.originSchool, teachers: mapData.originTeachers });
 
       // 打字期间暂停 pulse-lines 动画，减少主线程竞争（仅 comet 模式有 pulse-lines）
       const hasPulse = mapData.lineAnim === 'comet';
@@ -266,7 +266,7 @@
       chart.setOption({ geo: { roam: true } });
       await revealTargets(chart, scatterData, linesData, 'unified');
       document.getElementById('reset-btn').classList.add('visible');
-      initMapUI(chart, initZoom, initCenter);
+      initMapUI(chart, initZoom, initCenter, {});
     }
 
     let lastMapData = null;

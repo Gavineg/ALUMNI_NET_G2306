@@ -16,12 +16,7 @@
   <div class="portal-wrap" id="login-wrap">
     <div class="portal-card">
       <h2>&gt; G2306 // SYSTEM_PORTAL</h2>
-      <p class="sub">SELECT ACCESS LEVEL AND AUTHENTICATE</p>
-
-      <div class="role-tabs">
-        <button class="role-tab active" data-role="student">[STUDENT_ACCESS]</button>
-        <button class="role-tab" data-role="admin">[ADMIN_ACCESS]</button>
-      </div>
+      <p class="sub">AUTHENTICATE TO CONTINUE</p>
 
       <div class="field-group">
         <label class="field-label">&gt; USER_ID</label>
@@ -65,20 +60,10 @@
   </div>
 
   <script type="module">
-    import { login, getSession, clearSession } from './js/auth.js';
-    import { initStudentPortal } from './js/student-portal.js';
-    import { initAdminPortal }   from './js/admin-portal.js';
-
-    let selectedRole = 'student';
-
-    // Role Tab 切换
-    document.querySelectorAll('.role-tab').forEach(tab => {
-      tab.addEventListener('click', () => {
-        document.querySelectorAll('.role-tab').forEach(t => t.classList.remove('active'));
-        tab.classList.add('active');
-        selectedRole = tab.dataset.role;
-      });
-    });
+    import { login, getSession, clearSession, saveSession } from './js/auth.js';
+    import { initStudentPortal }  from './js/student-portal.js';
+    import { initAdminPortal }    from './js/admin-portal.js';
+    import { initTeacherPortal }  from './js/teacher-portal.js';
 
     // 回车登录
     ['login-username', 'login-password'].forEach(id => {
@@ -106,17 +91,7 @@
 
       try {
         const data = await login(username, password);
-
-        // 角色检查
-        if (selectedRole === 'admin' && !data.isAdmin) {
-          clearSession();
-          msg.textContent = '> [ERR] INSUFFICIENT PRIVILEGES FOR ADMIN ACCESS';
-          msg.className = 'msg err';
-          btn.disabled = false; btn.textContent = '[AUTHENTICATE]';
-          return;
-        }
-
-        await enterPortal(data.isAdmin);
+        await enterPortal(data.isAdmin, data.isTeacher);
       } catch(e) {
         msg.textContent = `> [ERR] ${e.message.toUpperCase()}`;
         msg.className = 'msg err';
@@ -133,20 +108,21 @@
       document.getElementById('login-msg').textContent = '';
     });
 
-    async function enterPortal(isAdmin) {
+    async function enterPortal(isAdmin, isTeacher) {
       document.getElementById('login-wrap').style.display  = 'none';
       document.getElementById('portal-wrap').style.display = 'flex';
       document.getElementById('login-btn').disabled    = false;
       document.getElementById('login-btn').textContent = '[AUTHENTICATE]';
 
       const content = document.getElementById('panel-content');
-      if (isAdmin) await initAdminPortal(content);
-      else         await initStudentPortal(content);
+      if (isAdmin)        await initAdminPortal(content);
+      else if (isTeacher) await initTeacherPortal(content);
+      else                await initStudentPortal(content);
     }
 
     // 已有 session 则自动进入
     const session = getSession();
-    if (session) enterPortal(session.isAdmin);
+    if (session) enterPortal(session.isAdmin, session.isTeacher);
   </script>
 </body>
 </html>

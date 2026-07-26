@@ -40,12 +40,24 @@ export function handleCloseBtn() {
   return true;
 }
 
-export function initMapUI(chart, initZoom, initCenter) {
+export function initMapUI(chart, initZoom, initCenter, originInfo) {
   chartRef      = chart;
   initZoomRef   = initZoom;
   initCenterRef = initCenter;
 
   chart.on('click', params => {
+    // origin node click
+    if (params.seriesId === 'origin') {
+      if (clickThrottle) clearTimeout(clickThrottle);
+      clickThrottle = setTimeout(() => {
+        clickThrottle = null;
+        chartRef.setOption({ geo: { roam: false } });
+        navStack = [];
+        showOriginInfo(originInfo || {});
+      }, 100);
+      return;
+    }
+
     if (!params.seriesId?.startsWith('target-')) {
       navStack = [];
       closePanel();
@@ -68,6 +80,53 @@ export function initMapUI(chart, initZoom, initCenter) {
       }
     }, 100);
   });
+}
+
+// ── 原点面板：学校 + 教师 ────────────────────────────────────
+
+async function showOriginInfo({ school, teachers, name }) {
+  const session = ++currentSession;
+  abortBios();
+
+  const panel    = document.getElementById('info-panel');
+  const terminal = document.getElementById('terminal-content');
+  panel.classList.add('active');
+  terminal.innerHTML = '';
+  updateCloseBtn();
+
+  const safe = async lines => {
+    if (session !== currentSession) return;
+    await biosAppend(terminal, lines);
+  };
+
+  await safe([
+    { text: '> ORIGIN_NODE // SYSTEM_BASE', status: 'RDY' },
+    { text: `> LOCATION : [${name || 'SHENZHEN'}]`, status: 'OK' },
+    ...(school ? [{ text: `> SCHOOL   : [${school}]`, status: 'VRF' }] : []),
+    { text: '> ─────────────────────────────' },
+  ]);
+
+  if (session !== currentSession) return;
+
+  const list = Array.isArray(teachers) ? teachers : [];
+  if (list.length === 0) {
+    await safe([{ text: '> NO TEACHER DATA ON FILE', status: 'ERR' }]);
+  } else {
+    await safe([{ text: `> FACULTY_RECORDS : ${list.length}`, status: 'RDY' }]);
+    for (let i = 0; i < list.length; i++) {
+      if (session !== currentSession) return;
+      const t = list[i];
+      await safe([
+        { text: `> [${String(i + 1).padStart(2, '0')}] ${t.name || '—'}`, status: 'OK' },
+        ...(t.subject ? [{ text: `     SUBJECT : ${t.subject}` }] : []),
+        ...(t.contact ? [{ text: `     CONTACT : ${t.contact}` }] : []),
+        ...(t.note    ? [{ text: `     NOTE    : ${t.note}` }]    : []),
+      ]);
+    }
+  }
+
+  await safe([{ text: '> EOF', status: 'DONE' }]);
+  if (chartRef) chartRef.setOption({ geo: { roam: true } });
 }
 
 // ── 第一级：城市菜单 ──────────────────────────────────────────

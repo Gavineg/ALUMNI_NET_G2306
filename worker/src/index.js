@@ -5,7 +5,9 @@ import {
   mapData, getMe, updateMe,
   adminListStudents, adminCreateStudent, adminUpdateStudent, adminDeleteStudent,
   getSettings, updateSettings, hackServers, hackLoot,
-  getMemorial, updateMemorial
+  getMemorial, updateMemorial,
+  listTeachers, createTeacher, updateTeacher, deleteTeacher,
+  getTeacherMe, updateTeacherMe
 } from './students.js';
 import { FirestoreDB } from './firestore.js';
 
@@ -95,10 +97,10 @@ export default {
       }
 
       const token = await signJwt(
-        { sub: row.id, name: row.display_name, username: row.username, admin: !!row.is_admin },
+        { sub: row.id, name: row.display_name, username: row.username, admin: !!row.is_admin, teacher: !!row.is_teacher },
         env.JWT_SECRET
       );
-      return json({ token, isAdmin: !!row.is_admin, name: row.display_name, username: row.username });
+      return json({ token, isAdmin: !!row.is_admin, isTeacher: !!row.is_teacher, name: row.display_name, username: row.username });
     }
 
     // ── Auth guard ────────────────────────────────────────────
@@ -113,6 +115,14 @@ export default {
       if (!user) return json({ error: 'unauthorized' }, 401);
       if (method === 'GET') return addCors(await getMe(user.sub, db));
       if (method === 'PUT') return addCors(await updateMe(user.sub, request, db));
+    }
+
+    // ── Teacher self-service ───────────────────────────────────
+    if (path === '/api/teacher/me') {
+      if (!user) return json({ error: 'unauthorized' }, 401);
+      if (!user.teacher) return json({ error: 'forbidden' }, 403);
+      if (method === 'GET') return addCors(await getTeacherMe(user.sub, db));
+      if (method === 'PUT') return addCors(await updateTeacherMe(user.sub, request, db));
     }
 
     if (path === '/api/student/password' && method === 'PUT') {
@@ -173,6 +183,18 @@ export default {
       if (path === '/api/admin/settings') {
         if (method === 'GET') return addCors(await getSettings(db));
         if (method === 'PUT') return addCors(await updateSettings(request, db));
+      }
+
+      // Teachers
+      if (path === '/api/admin/teachers') {
+        if (method === 'GET')  return addCors(await listTeachers(db));
+        if (method === 'POST') return addCors(await createTeacher(request, db));
+      }
+      const teacherMatch = path.match(/^\/api\/admin\/teachers\/([^/]+)$/);
+      if (teacherMatch) {
+        const id = teacherMatch[1];
+        if (method === 'PUT')    return addCors(await updateTeacher(id, request, db));
+        if (method === 'DELETE') return addCors(await deleteTeacher(id, db));
       }
 
       // Memorial / Yearbook

@@ -331,6 +331,16 @@ async function renderSettings(content) {
             <input class="hud-input" id="cfg-olat" value="${settings.originLat || ''}">
           </div>
         </div>
+        <div class="field-group">
+          <label class="field-label">&gt; SCHOOL_NAME</label>
+          <input class="hud-input" id="cfg-oschool" value="${escH(settings.originSchool || '')}" placeholder="E.G. 深圳创新实验学校...">
+        </div>
+      </div>
+
+      <div style="border-top:1px dashed var(--hud-border);padding-top:18px;margin-bottom:20px">
+        <div class="panel-title" style="font-size:12px;margin-bottom:12px">&gt; TEACHERS</div>
+        <div id="cfg-teachers-list"></div>
+        <button class="hud-btn ghost" id="cfg-add-teacher-btn" style="margin-top:8px;font-size:11px">[+ ADD TEACHER]</button>
       </div>
 
       <div style="border-top:1px dashed var(--hud-border);padding-top:18px;margin-bottom:20px">
@@ -427,21 +437,103 @@ async function renderSettings(content) {
   });
 
   content.querySelector('#cfg-save-btn').addEventListener('click', async () => {
+    // collect teachers from rows
+    const teacherRows = [...content.querySelectorAll('.cfg-teacher-row')];
+    const teachers = teacherRows.map(row => ({
+      id:      row.dataset.id || '',
+      name:    row.querySelector('.t-name').value.trim(),
+      subject: row.querySelector('.t-subject').value.trim(),
+      contact: row.querySelector('.t-contact').value.trim(),
+      note:    row.querySelector('.t-note').value.trim(),
+    })).filter(t => t.name);
+
     const payload = {
-      originName:   content.querySelector('#cfg-oname').value.trim(),
-      originLon:    content.querySelector('#cfg-olon').value.trim(),
-      originLat:    content.querySelector('#cfg-olat').value.trim(),
-      colorMode:    content.querySelector('#cfg-cmode').value,
-      unifiedColor: content.querySelector('#cfg-ucolor').value.trim(),
-      originIcon:   content.querySelector('#cfg-icon').value,
-      lineAnim:     content.querySelector('#cfg-lineanim').value,
-      nodeAnim:     content.querySelector('#cfg-nodeanim').value,
+      originName:    content.querySelector('#cfg-oname').value.trim(),
+      originLon:     content.querySelector('#cfg-olon').value.trim(),
+      originLat:     content.querySelector('#cfg-olat').value.trim(),
+      originSchool:  content.querySelector('#cfg-oschool').value.trim(),
+      colorMode:     content.querySelector('#cfg-cmode').value,
+      unifiedColor:  content.querySelector('#cfg-ucolor').value.trim(),
+      originIcon:    content.querySelector('#cfg-icon').value,
+      lineAnim:      content.querySelector('#cfg-lineanim').value,
+      nodeAnim:      content.querySelector('#cfg-nodeanim').value,
     };
-    const res = await apiFetch('/api/admin/settings', { method: 'PUT', body: JSON.stringify(payload) });
     const msg = content.querySelector('#cfg-msg');
-    if (res.ok) { msg.textContent = '> SETTINGS SAVED [OK]'; msg.className = 'msg ok'; }
-    else        { msg.textContent = '> [ERR] SAVE FAILED';   msg.className = 'msg err'; }
+    msg.textContent = '> SAVING...'; msg.className = 'msg';
+
+    // Save settings and sync teachers in parallel
+    const [settingsRes] = await Promise.all([
+      apiFetch('/api/admin/settings', { method: 'PUT', body: JSON.stringify(payload) }),
+      syncTeachers(teachers),
+    ]);
+
+    if (settingsRes.ok) { msg.textContent = '> SETTINGS SAVED [OK]'; msg.className = 'msg ok'; }
+    else                { msg.textContent = '> [ERR] SAVE FAILED';   msg.className = 'msg err'; }
   });
+
+  // Load and render teacher list
+  await initTeacherList(content);
+}
+
+// ── Teacher list helpers ──────────────────────────────────────
+
+let _existingTeachers = [];
+
+async function initTeacherList(content) {
+  const listEl = content.querySelector('#cfg-teachers-list');
+  if (!listEl) return;
+  try {
+    const res = await apiFetch('/api/admin/teachers');
+    _existingTeachers = res.ok ? await res.json() : [];
+  } catch { _existingTeachers = []; }
+  renderTeacherRows(listEl, _existingTeachers);
+
+  content.querySelector('#cfg-add-teacher-btn').addEventListener('click', () => {
+    _existingTeachers.push({ id: '', name: '', subject: '', contact: '', note: '' });
+    renderTeacherRows(listEl, _existingTeachers);
+  });
+}
+
+function renderTeacherRows(listEl, teachers) {
+  listEl.innerHTML = teachers.map((t, i) => `
+    <div class="cfg-teacher-row" data-id="${t.id || ''}" data-idx="${i}"
+         style="border:1px dashed var(--hud-border);padding:10px;margin-bottom:8px;border-radius:2px">
+      <div style="display:flex;gap:6px;margin-bottom:6px">
+        <input class="hud-input t-name"    value="${escH(t.name)}"    placeholder="NAME *"    style="flex:1">
+        <input class="hud-input t-subject" value="${escH(t.subject)}" placeholder="SUBJECT"   style="flex:1">
+      </div>
+      <div style="display:flex;gap:6px;margin-bottom:6px">
+        <input class="hud-input t-contact" value="${escH(t.contact)}" placeholder="CONTACT (OPTIONAL)" style="flex:1">
+        <input class="hud-input t-note"    value="${escH(t.note)}"    placeholder="NOTE (OPTIONAL)"    style="flex:1">
+      </div>
+      <button class="hud-btn ghost cfg-del-teacher" data-idx="${i}"
+              style="font-size:10px;padding:3px 8px;color:var(--hud-danger)">[REMOVE]</button>
+    </div>
+  `).join('');
+
+  listEl.querySelectorAll('.cfg-del-teacher').forEach(btn => {
+    btn.addEventListener('click', () => {
+      const idx = parseInt(btn.dataset.idx);
+      _existingTeachers.splice(idx, 1);
+      renderTeacherRows(listEl, _existingTeachers);
+    });
+  });
+}
+
+async function syncTeachers(formTeachers) {
+  // Determine creates, updates, deletes by comparing with _existingTeachers
+  const existingIds = new Set(_existingTeachers.map(t => t.id).filter(Boolean));
+  const formIds     = new Set(formTeachers.map(t => t.id).filter(Boolean));
+
+  const toDelete = _existingTeachers.filter(t => t.id && !formIds.has(t.id));
+  const toCreate = formTeachers.filter(t => !t.id);
+  const toUpdate = formTeachers.filter(t => t.id && existingIds.has(t.id));
+
+  await Promise.all([
+    ...toDelete.map(t => apiFetch(`/api/admin/teachers/${t.id}`, { method: 'DELETE' })),
+    ...toCreate.map(t => apiFetch('/api/admin/teachers', { method: 'POST', body: JSON.stringify(t) })),
+    ...toUpdate.map(t => apiFetch(`/api/admin/teachers/${t.id}`, { method: 'PUT', body: JSON.stringify(t) })),
+  ]);
 }
 
 // ── Change Password tab ───────────────────────────────────────

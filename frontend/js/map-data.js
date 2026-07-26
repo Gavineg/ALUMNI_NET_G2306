@@ -82,9 +82,11 @@ function buildMapResult(data) {
   );
 
   return { origin, originCoords, universities, colorMode, unifiedColor, scatterData, linesData,
-           originIcon: data.originIcon || 'diamond',
-           lineAnim:   data.lineAnim   || 'comet',
-           nodeAnim:   data.nodeAnim   || 'expand' };
+           originIcon:     data.originIcon || 'diamond',
+           lineAnim:       data.lineAnim   || 'comet',
+           nodeAnim:       data.nodeAnim   || 'expand',
+           originSchool:   origin.school   || '',
+           originTeachers: origin.teachers || [] };
 }
 
 /**

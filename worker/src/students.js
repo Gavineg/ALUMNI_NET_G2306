@@ -2,14 +2,15 @@ import { hashPassword } from './auth.js';
 import { filterText }   from './profanity.js';
 
 const SETTINGS_DEFAULTS = {
-  colorMode:    'unified',
-  unifiedColor: '#b8ff47',
-  originName:   'SHENZHEN_LONGGANG',
-  originLon:    '114.247',
-  originLat:    '22.723',
-  originIcon:   'diamond',
-  lineAnim:     'comet',
-  nodeAnim:     'expand'
+  colorMode:     'unified',
+  unifiedColor:  '#b8ff47',
+  originName:    'SHENZHEN_LONGGANG',
+  originLon:     '114.247',
+  originLat:     '22.723',
+  originIcon:    'diamond',
+  lineAnim:      'comet',
+  nodeAnim:      'expand',
+  originSchool:  '',
 };
 
 function json(data, status = 200) {
@@ -54,7 +55,9 @@ export async function mapData(db) {
     origin: {
       name:      settingsMap.originName,
       longitude: parseFloat(settingsMap.originLon),
-      latitude:  parseFloat(settingsMap.originLat)
+      latitude:  parseFloat(settingsMap.originLat),
+      school:    settingsMap.originSchool || '',
+      teachers:  (() => { try { return JSON.parse(settingsMap.originTeachers || '[]'); } catch { return []; } })()
     },
     colorMode:    settingsMap.colorMode,
     unifiedColor: settingsMap.unifiedColor,
@@ -70,9 +73,9 @@ export async function getMe(userId, db) {
   const doc = await db.get('students', userId);
   if (!doc) return json({ error: 'not found' }, 404);
   const { id, username, display_name, university, major, city, longitude, latitude, status_text, can_cengfan,
-          server_hostname, server_ip, server_theme, server_difficulty, server_ports, hack_loot } = doc;
+          server_hostname, server_ip, server_theme, server_difficulty, server_ports, hack_loot, avatar_url } = doc;
   return json({ id, username, display_name, university, major, city, longitude, latitude, status_text, can_cengfan,
-                server_hostname, server_ip, server_theme, server_difficulty, server_ports, hack_loot });
+                server_hostname, server_ip, server_theme, server_difficulty, server_ports, hack_loot, avatar_url });
 }
 
 // PUT /api/student/me
@@ -81,7 +84,7 @@ export async function updateMe(userId, request, db) {
   if (!body) return json({ error: 'invalid json' }, 400);
 
   const allowed = ['university', 'major', 'city', 'longitude', 'latitude', 'status_text', 'can_cengfan',
-                   'server_hostname', 'server_theme', 'server_difficulty', 'server_ports', 'hack_loot'];
+                   'server_hostname', 'server_theme', 'server_difficulty', 'server_ports', 'hack_loot', 'avatar_url'];
   const update = {};
 
   for (const k of allowed) {
@@ -91,8 +94,12 @@ export async function updateMe(userId, request, db) {
       } else if (k === 'hack_loot') {
         update[k] = String(body[k] ?? '').slice(0, 500);
       } else if (k === 'server_hostname') {
-        // Basic sanitize: lowercase alphanumeric + hyphens only
         update[k] = String(body[k] ?? '').toLowerCase().replace(/[^a-z0-9-]/g, '-').slice(0, 32) || null;
+      } else if (k === 'avatar_url') {
+        // base64 图片，限制 300KB
+        const val = String(body[k] ?? '');
+        if (val && val.length > 400000) return json({ error: 'image too large (max 300KB)' }, 400);
+        update[k] = val || null;
       } else {
         update[k] = body[k];
       }
@@ -110,9 +117,9 @@ export async function updateMe(userId, request, db) {
 export async function adminListStudents(db) {
   const students = await db.list('students');
   return json(students.map(s => {
-    const { id, username, display_name, university, major, city, longitude, latitude, status_text, can_cengfan, is_admin, created_at,
+    const { id, username, display_name, university, major, city, longitude, latitude, status_text, can_cengfan, is_admin, is_teacher, created_at,
             server_hostname, server_ip, server_theme, server_difficulty, server_ports, hack_loot } = s;
-    return { id, username, display_name, university, major, city, longitude, latitude, status_text, can_cengfan, is_admin, created_at,
+    return { id, username, display_name, university, major, city, longitude, latitude, status_text, can_cengfan, is_admin, is_teacher, created_at,
              server_hostname, server_ip, server_theme, server_difficulty, server_ports, hack_loot };
   }));
 }
@@ -134,7 +141,8 @@ export async function adminCreateStudent(request, db) {
     city:          body.city          ?? null,
     longitude:     body.longitude     ?? null,
     latitude:      body.latitude      ?? null,
-    is_admin:      body.is_admin ? 1 : 0,
+    is_admin:      body.is_admin   ? 1 : 0,
+    is_teacher:    body.is_teacher ? 1 : 0,
     can_cengfan:   0,
     created_at:    now,
     updated_at:    now
@@ -146,7 +154,7 @@ export async function adminUpdateStudent(id, request, db) {
   const body = await request.json().catch(() => null);
   if (!body) return json({ error: 'invalid json' }, 400);
 
-  const allowed = ['username', 'display_name', 'university', 'major', 'city', 'longitude', 'latitude', 'status_text', 'can_cengfan', 'is_admin',
+  const allowed = ['username', 'display_name', 'university', 'major', 'city', 'longitude', 'latitude', 'status_text', 'can_cengfan', 'is_admin', 'is_teacher',
                    'server_hostname', 'server_ip', 'server_theme', 'server_difficulty', 'server_ports', 'hack_loot'];
   const update = {};
   for (const k of allowed) {
@@ -242,12 +250,72 @@ export async function updateSettings(request, db) {
   const body = await request.json().catch(() => null);
   if (!body) return json({ error: 'invalid json' }, 400);
 
-  const allowed = ['colorMode', 'unifiedColor', 'originName', 'originLon', 'originLat', 'originIcon', 'lineAnim', 'nodeAnim'];
+  const allowed = ['colorMode', 'unifiedColor', 'originName', 'originLon', 'originLat', 'originIcon', 'lineAnim', 'nodeAnim', 'originSchool', 'originTeachers'];
   for (const k of allowed) {
     if (k in body) {
       await db.set('settings', k, { value: String(body[k]) });
     }
   }
+  return json({ ok: true });
+}
+
+// ── Teachers ──────────────────────────────────────────────────
+
+export async function listTeachers(db) {
+  const docs = await db.list('teachers');
+  return json(docs.map(d => ({
+    id: d.id, name: d.name || '', subject: d.subject || '',
+    contact: d.contact || '', note: d.note || ''
+  })));
+}
+
+export async function createTeacher(request, db) {
+  const body = await request.json().catch(() => null);
+  if (!body?.name) return json({ error: 'name required' }, 400);
+  const doc = await db.add('teachers', {
+    name:    String(body.name).slice(0, 50),
+    subject: String(body.subject || '').slice(0, 50),
+    contact: String(body.contact || '').slice(0, 100),
+    note:    String(body.note    || '').slice(0, 200),
+  });
+  return json({ ok: true, id: doc.id }, 201);
+}
+
+export async function updateTeacher(id, request, db) {
+  const body = await request.json().catch(() => null);
+  if (!body) return json({ error: 'invalid json' }, 400);
+  const update = {};
+  if ('name'    in body) update.name    = String(body.name).slice(0, 50);
+  if ('subject' in body) update.subject = String(body.subject).slice(0, 50);
+  if ('contact' in body) update.contact = String(body.contact).slice(0, 100);
+  if ('note'    in body) update.note    = String(body.note).slice(0, 200);
+  if (!Object.keys(update).length) return json({ error: 'nothing to update' }, 400);
+  await db.set('teachers', id, update);
+  return json({ ok: true });
+}
+
+export async function deleteTeacher(id, db) {
+  await db.delete('teachers', id);
+  return json({ ok: true });
+}
+
+// Teacher self-update (authenticated as teacher)
+export async function getTeacherMe(userId, db) {
+  const doc = await db.get('teachers', userId);
+  if (!doc) return json({ error: 'not found' }, 404);
+  return json({ id: doc.id, name: doc.name || '', subject: doc.subject || '', contact: doc.contact || '', note: doc.note || '' });
+}
+
+export async function updateTeacherMe(userId, request, db) {
+  const body = await request.json().catch(() => null);
+  if (!body) return json({ error: 'invalid json' }, 400);
+  const update = {};
+  if ('name'    in body) update.name    = String(body.name).slice(0, 50);
+  if ('subject' in body) update.subject = String(body.subject).slice(0, 50);
+  if ('contact' in body) update.contact = String(body.contact).slice(0, 100);
+  if ('note'    in body) update.note    = String(body.note).slice(0, 200);
+  if (!Object.keys(update).length) return json({ error: 'nothing to update' }, 400);
+  await db.set('teachers', userId, update);
   return json({ ok: true });
 }
 

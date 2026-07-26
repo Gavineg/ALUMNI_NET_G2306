@@ -56,6 +56,19 @@ export async function initStudentPortal(container) {
         <textarea class="hud-input" id="s-status" rows="3" maxlength="100" placeholder="INPUT STATUS TEXT..."></textarea>
       </div>
 
+      <div class="field-group">
+        <label class="field-label">&gt; PROFILE_IMAGE <span style="opacity:0.5;font-size:10px">(OPTIONAL — MAX 300KB)</span></label>
+        <div id="s-img-drop" style="border:1px dashed var(--hud-border);padding:16px;text-align:center;cursor:pointer;
+             color:var(--hud-text-dim);font-size:11px;letter-spacing:1px;transition:border-color .2s;position:relative">
+          <div id="s-img-hint">&gt; DRAG &amp; DROP IMAGE HERE OR CLICK TO UPLOAD</div>
+          <img id="s-img-preview" style="display:none;max-width:100%;max-height:180px;margin-top:8px;border:1px solid var(--hud-border)">
+          <button id="s-img-clear" style="display:none;position:absolute;top:6px;right:8px;background:transparent;
+                  border:1px solid var(--hud-danger);color:var(--hud-danger);cursor:pointer;font-size:10px;padding:2px 6px">[CLEAR]</button>
+          <input type="file" id="s-img-input" accept="image/*" style="display:none">
+        </div>
+        <div id="s-img-msg" style="font-size:11px;margin-top:4px"></div>
+      </div>
+
       <button class="hud-btn full" id="s-save-btn">[SAVE_CHANGES]</button>
       <div class="msg" id="s-msg"></div>
 
@@ -120,6 +133,15 @@ async function loadProfile(container) {
   if (profile.longitude) container.querySelector('#s-lon').value = profile.longitude;
   if (profile.latitude)  container.querySelector('#s-lat').value = profile.latitude;
   setCengfan(container, !!profile.can_cengfan);
+  if (profile.avatar_url) {
+    const preview = container.querySelector('#s-img-preview');
+    const hint    = container.querySelector('#s-img-hint');
+    const clear   = container.querySelector('#s-img-clear');
+    preview.src = profile.avatar_url;
+    preview.style.display = 'block';
+    hint.style.display    = 'none';
+    clear.style.display   = 'block';
+  }
 }
 
 function setCengfan(container, canCengfan) {
@@ -153,6 +175,44 @@ function setMsg(container, text, type = 'ok') {
 function bindStudentEvents(container) {
   container.querySelector('#s-status').addEventListener('input', e => {
     updateCharCount(container, e.target.value);
+  });
+
+  // ── Image upload ──────────────────────────────────────────
+  const dropZone = container.querySelector('#s-img-drop');
+  const fileInput = container.querySelector('#s-img-input');
+  const imgMsg    = container.querySelector('#s-img-msg');
+
+  dropZone.addEventListener('click', e => {
+    if (e.target.id !== 's-img-clear') fileInput.click();
+  });
+  dropZone.addEventListener('dragover', e => {
+    e.preventDefault();
+    dropZone.style.borderColor = 'var(--hud-primary)';
+  });
+  dropZone.addEventListener('dragleave', () => {
+    dropZone.style.borderColor = '';
+  });
+  dropZone.addEventListener('drop', e => {
+    e.preventDefault();
+    dropZone.style.borderColor = '';
+    const file = e.dataTransfer.files[0];
+    if (file) handleImageFile(container, file, imgMsg);
+  });
+  fileInput.addEventListener('change', () => {
+    if (fileInput.files[0]) handleImageFile(container, fileInput.files[0], imgMsg);
+  });
+  container.querySelector('#s-img-clear').addEventListener('click', e => {
+    e.stopPropagation();
+    profile.avatar_url = null;
+    const preview = container.querySelector('#s-img-preview');
+    const hint    = container.querySelector('#s-img-hint');
+    const clear   = container.querySelector('#s-img-clear');
+    preview.style.display = 'none';
+    preview.src = '';
+    hint.style.display = 'block';
+    clear.style.display = 'none';
+    imgMsg.textContent = '';
+    fileInput.value = '';
   });
 
   container.querySelector('#s-avail-btn').addEventListener('click', () => setCengfan(container, true));
@@ -195,7 +255,8 @@ function bindStudentEvents(container) {
       longitude:   parseFloat(container.querySelector('#s-lon').value) || profile.longitude || null,
       latitude:    parseFloat(container.querySelector('#s-lat').value) || profile.latitude  || null,
       status_text: container.querySelector('#s-status').value.trim(),
-      can_cengfan: profile.can_cengfan
+      can_cengfan: profile.can_cengfan,
+      avatar_url:  profile.avatar_url ?? null,
     };
     const btn = container.querySelector('#s-save-btn');
     btn.disabled = true;
@@ -974,4 +1035,61 @@ function initPortalTerminal(container, session) {
   appendLine('Last login: ' + new Date().toUTCString());
   appendLine('Type "help" for available commands.');
   appendLine('');
+}
+
+// ── Image compression helper ──────────────────────────────────
+
+function handleImageFile(container, file, msgEl) {
+  if (!file.type.startsWith('image/')) {
+    msgEl.textContent = '> [ERR] NOT AN IMAGE FILE';
+    msgEl.style.color = 'var(--hud-danger)';
+    return;
+  }
+  msgEl.textContent = '> PROCESSING...';
+  msgEl.style.color = 'var(--hud-text-dim)';
+
+  const reader = new FileReader();
+  reader.onload = e => {
+    const img = new Image();
+    img.onload = () => {
+      // Compress to fit within ~300KB base64 (~225KB raw)
+      const MAX_PX = 800;
+      let w = img.width, h = img.height;
+      if (w > MAX_PX || h > MAX_PX) {
+        const scale = MAX_PX / Math.max(w, h);
+        w = Math.round(w * scale);
+        h = Math.round(h * scale);
+      }
+      const canvas = document.createElement('canvas');
+      canvas.width = w; canvas.height = h;
+      canvas.getContext('2d').drawImage(img, 0, 0, w, h);
+
+      let quality = 0.85;
+      let dataUrl = canvas.toDataURL('image/jpeg', quality);
+      // Reduce quality until under ~400KB base64 string length
+      while (dataUrl.length > 400000 && quality > 0.3) {
+        quality -= 0.1;
+        dataUrl = canvas.toDataURL('image/jpeg', quality);
+      }
+
+      if (dataUrl.length > 400000) {
+        msgEl.textContent = '> [ERR] IMAGE TOO LARGE EVEN AFTER COMPRESSION';
+        msgEl.style.color = 'var(--hud-danger)';
+        return;
+      }
+
+      profile.avatar_url = dataUrl;
+      const preview = container.querySelector('#s-img-preview');
+      const hint    = container.querySelector('#s-img-hint');
+      const clear   = container.querySelector('#s-img-clear');
+      preview.src           = dataUrl;
+      preview.style.display = 'block';
+      hint.style.display    = 'none';
+      clear.style.display   = 'block';
+      msgEl.textContent = `> [OK] ${w}×${h}PX  ${Math.round(dataUrl.length / 1024)}KB`;
+      msgEl.style.color = 'var(--hud-primary)';
+    };
+    img.src = e.target.result;
+  };
+  reader.readAsDataURL(file);
 }
