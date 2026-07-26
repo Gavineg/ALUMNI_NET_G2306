@@ -255,11 +255,11 @@ export async function closePanel() {
     await new Promise(r => setTimeout(r, 140));
   }
 
+  if (chartRef) chartRef.setOption({ geo: { roam: true } });
   panel.classList.add('closing');
   setTimeout(() => {
     panel.classList.remove('active', 'closing');
   }, 320);
-  if (chartRef) chartRef.setOption({ geo: { roam: true } });
 }
 
 /*

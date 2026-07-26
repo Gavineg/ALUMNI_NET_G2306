@@ -254,9 +254,20 @@ function _cometCanvas(chart, linesData, scatterData, flightTime) {
 // 共享节点动画调度器 — 所有到达节点合并进单个 rAF，每帧一次 setOption
 const _nodeAnimQueue = [];  // { chart, node, finalSize, idx, startTime }
 let _nodeAnimRaf = null;
+let _nodeAnimFrameCount = 0;
 
 function _nodeAnimTick(now) {
   const DURATION = 700;
+  const isMobile = window.innerWidth < 768 || 'ontouchstart' in window;
+  _nodeAnimFrameCount++;
+
+  // 手机端每隔一帧才更新节点（降到 ~30fps），腾出主线程给流光 canvas
+  if (isMobile && (_nodeAnimFrameCount % 2 === 0)) {
+    if (_nodeAnimQueue.length) _nodeAnimRaf = requestAnimationFrame(_nodeAnimTick);
+    else _nodeAnimRaf = null;
+    return;
+  }
+
   const updates = [];
   let anyPending = false;
   let chart = null;
@@ -273,7 +284,7 @@ function _nodeAnimTick(now) {
       symbolSize: sz,
       data: [{ name: item.node.name, value: item.node.value,
         itemStyle: { color: item.node.nodeColor, opacity: op,
-          shadowBlur: op * 14, shadowColor: item.node.nodeColor } }],
+          shadowBlur: isMobile ? 0 : op * 14, shadowColor: item.node.nodeColor } }],
     });
     if (t >= 1) _nodeAnimQueue.splice(i, 1);
     else anyPending = true;
@@ -290,12 +301,22 @@ function _nodeAnimTick(now) {
     // 动画全部完成后，叠加透明大圆扩大点击区域（手机端更大）
     if (chart && updates.length) {
       const hitMult = (window.innerWidth < 768 || 'ontouchstart' in window) ? 5 : 3.5;
-      chart.setOption({ series: updates.map(u => ({
+      const hitSeries = updates.map(u => ({
         id: `target-hit-${u.id.replace('target-', '')}`, type: 'effectScatter', coordinateSystem: 'geo', zlevel: 3,
         symbol: 'circle', symbolSize: u.symbolSize * hitMult, animation: false,
         data: u.data.map(d => ({ ...d, itemStyle: { color: 'transparent', opacity: 0 } })),
         showEffectOn: 'render', rippleEffect: { scale: 0 }, label: { show: false },
-      })) });
+      }));
+      // 手机端动画期间省略了 shadowBlur，此处补回最终态
+      if (isMobile) {
+        const finalSeries = updates.map(u => ({
+          id: u.id,
+          data: u.data.map(d => ({ ...d, itemStyle: { ...d.itemStyle, shadowBlur: 14, shadowColor: d.itemStyle.color } })),
+        }));
+        chart.setOption({ series: [...finalSeries, ...hitSeries] });
+      } else {
+        chart.setOption({ series: hitSeries });
+      }
     }
   }
 }
