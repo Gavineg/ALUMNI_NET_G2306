@@ -454,23 +454,14 @@ export async function updateMemorial(request, db) {
     const slide = { ...s };
     const isBase64 = typeof s.url === 'string' && s.url.startsWith('data:');
     if (isBase64) {
-      const imgId = s.img_id || null;
-      let docId;
-      if (imgId) {
-        await db.set('memorial_images', imgId, { data: s.url, slide_idx: i });
-        docId = imgId;
-      } else {
-        const created = await db.add('memorial_images', { data: s.url, slide_idx: i });
-        docId = created?.id;
-      }
-      if (docId) {
-        usedImgIds.add(docId);
-        slide.img_id = docId;
-      }
+      // Use existing img_id or generate a new stable one
+      const imgId = s.img_id || crypto.randomUUID();
+      await db.set('memorial_images', imgId, { data: s.url });
+      usedImgIds.add(imgId);
+      slide.img_id = imgId;
       delete slide.url;
     } else {
-      if (s.img_id) usedImgIds.add(s.img_id); // keep existing image
-      // no base64, keep img_id as-is (external url slide has no img_id)
+      if (s.img_id) usedImgIds.add(s.img_id);
     }
     return slide;
   }));
