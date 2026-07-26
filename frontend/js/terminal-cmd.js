@@ -249,7 +249,23 @@ export async function runCommand(raw, ctx) {
   if (cmd === 'fortune') return [L(pick(FORTUNES))];
   if (cmd === '42')   return [L('THE ANSWER TO LIFE, THE UNIVERSE, AND EVERYTHING.')];
   if (cmd === 'coffee') return [L('BREWING...'), L("418 I'M A TEAPOT", 'ERR'), L('(THIS TERMINAL CANNOT MAKE COFFEE)')];
-  if (cmd === 'about' || cmd === 'credits') return [L('ALUMNI_NET :: G2306'), L('A CYBERPUNK CLASSMATE LOCATOR.'), L('BUILT WITH ECHARTS, CLOUDFLARE, FIREBASE, AND SPITE.'), L('THANK YOU FOR VISITING.', 'OK')];
+  if (cmd === 'about' || cmd === 'credits') {
+    let githubMessage = '';
+    try {
+      const r = await fetch('https://api.github.com/repos/Gavineg/ALUMNI_NET_G2306/commits?per_page=1', { headers: { Accept: 'application/vnd.github.v3+json' } });
+      const data = await r.json().catch(() => null);
+      githubMessage = data?.message ? String(data.message) : '';
+    } catch (e) {
+      githubMessage = e?.message || 'UNAVAILABLE';
+    }
+    return [
+      L('ALUMNI_NET :: G2306'),
+      L('A CYBERPUNK CLASSMATE LOCATOR.'),
+      L('BUILT WITH ECHARTS, CLOUDFLARE, FIREBASE, AND SPITE.'),
+      L(`BUG FIXED: ${githubMessage || 'UNKNOWN'}`),
+      L('THANK YOU FOR VISITING.', 'OK')
+    ];
+  }
   if (cmd === 'hack') return [L(`INITIATING INTRUSION ON "${arg||'UNKNOWN TARGET'}"...`), L('JUST KIDDING. USE SCAN / CONNECT / CRACK / EXPLOIT.', 'OK')];
   if (cmd === 'sudo') return [L(`SUDO ${arg.toUpperCase()||'(NOTHING)'}`), L('[SUDO] PASSWORD FOR GUEST: ********'), L('PERMISSION DENIED. NICE TRY.', 'ERR')];
   if (cmd === 'su')   return [L('ACCESS DENIED — USE THE LOGIN PORTAL.', 'ERR')];

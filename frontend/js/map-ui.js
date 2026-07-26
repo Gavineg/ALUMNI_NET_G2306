@@ -16,6 +16,8 @@ let navStack = [];
 
 // 节流：连续点击只响应最后一次
 let clickThrottle = null;
+let nodeClickCooldownUntil = 0;
+const NODE_CLICK_COOLDOWN_MS = 600;
 
 function updateCloseBtn() {
   const btn = document.getElementById('close-btn');
@@ -47,6 +49,13 @@ export function initMapUI(chart, initZoom, initCenter, originInfo) {
 
   chart.on('click', params => {
     if (typeof window !== 'undefined' && window.__mapResetting) return;
+
+    const isNodeClick = params.seriesId === 'origin' || params.seriesId === 'origin-hit' || params.seriesId?.startsWith('target-');
+    if (isNodeClick) {
+      const now = Date.now();
+      if (now < nodeClickCooldownUntil) return;
+      nodeClickCooldownUntil = now + NODE_CLICK_COOLDOWN_MS;
+    }
 
     // origin node click
     if (params.seriesId === 'origin' || params.seriesId === 'origin-hit') {
