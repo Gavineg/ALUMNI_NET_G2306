@@ -123,9 +123,10 @@ async function showCityMenu(cluster) {
   }
 
   if (session !== currentSession) return;
-  const cur = document.createElement('span');
+  const cur = document.createElement('div');
   cur.className = 'terminal-cursor';
   terminal.appendChild(cur);
+  if (chartRef) chartRef.setOption({ geo: { roam: true } });
 }
 
 // ── 第二级：大学菜单 ──────────────────────────────────────────
@@ -175,6 +176,7 @@ async function showUniMenu(unis, cityName) {
   const cur = document.createElement('span');
   cur.className = 'terminal-cursor';
   terminal.appendChild(cur);
+  if (chartRef) chartRef.setOption({ geo: { roam: true } });
 }
 
 // ── 第三级：学生信息 ──────────────────────────────────────────
@@ -216,6 +218,7 @@ async function showStudentInfo(unis) {
   }
 
   await safe([{ text: '> EOF', status: 'DONE' }]);
+  if (chartRef) chartRef.setOption({ geo: { roam: true } });
 }
 
 // ── 供彩蛋命令终端复用 ────────────────────────────────────────
