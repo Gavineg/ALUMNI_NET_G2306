@@ -333,33 +333,25 @@ export async function deleteTeacher(id, db) {
   return json({ ok: true });
 }
 
-// One-shot dedup: keeps one entry per name (prefers student_id-linked doc),
-// deletes all extras. Safe to call multiple times.
-export async function deduplicateTeachers(db) {
-  const docs = await db.list('teachers');
-  // Group by name (lowercased)
-  const byName = {};
-  for (const d of docs) {
-    const key = (d.name || '').toLowerCase().trim();
-    if (!byName[key]) byName[key] = [];
-    byName[key].push(d);
-  }
-  const deleted = [];
-  for (const group of Object.values(byName)) {
-    if (group.length <= 1) continue;
-    // Keep: prefer doc with student_id, then lowest sort_order, then first created
-    group.sort((a, b) => {
-      if (a.student_id && !b.student_id) return -1;
-      if (!a.student_id && b.student_id) return 1;
-      return (a.sort_order ?? 999) - (b.sort_order ?? 999);
+// One-shot sync: ensures every student with is_teacher=1 has a linked teachers-collection entry.
+export async function syncTeachersFromStudents(db) {
+  const [students, teachers] = await Promise.all([
+    db.list('students'),
+    db.list('teachers'),
+  ]);
+  const linkedIds = new Set(teachers.map(t => t.student_id).filter(Boolean));
+  const created = [];
+  for (const s of students) {
+    if (!s.is_teacher) continue;
+    if (linkedIds.has(s.id)) continue;
+    await db.add('teachers', {
+      student_id: s.id,
+      name:       s.display_name || s.username || '',
+      subject:    '', contact: '', note: '', sort_order: 999,
     });
-    const [keep, ...extras] = group;
-    for (const d of extras) {
-      await db.delete('teachers', d.id);
-      deleted.push(d.id);
-    }
+    created.push(s.id);
   }
-  return json({ ok: true, deleted });
+  return json({ ok: true, created });
 }
 
 // Teacher self-update (authenticated as teacher)

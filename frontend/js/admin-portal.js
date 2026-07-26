@@ -458,7 +458,7 @@ async function renderSettings(content) {
         <div class="panel-title" style="font-size:12px;margin-bottom:4px">&gt; TEACHERS</div>
         <div style="font-size:10px;color:var(--hud-text-dim);margin-bottom:12px">&gt; ADD / REMOVE TEACHERS IN [STUDENTS] TAB (IS_TEACHER ACCOUNT). SORT ORDER ONLY HERE.</div>
         <div id="cfg-teachers-list"></div>
-        <button class="hud-btn ghost" id="cfg-dedup-btn" style="margin-top:10px;font-size:10px;color:var(--hud-warn)">[DEDUP_TEACHERS]</button>
+        <button class="hud-btn ghost" id="cfg-dedup-btn" style="margin-top:10px;font-size:10px;color:var(--hud-warn)">[SYNC_TEACHERS]</button>
         <span class="msg" id="cfg-dedup-msg" style="font-size:10px;margin-left:8px"></span>
       </div>
 
@@ -602,10 +602,10 @@ async function initTeacherList(content) {
   if (dedupBtn) {
     dedupBtn.addEventListener('click', async () => {
       dedupBtn.disabled = true; dedupMsg.textContent = '> RUNNING...'; dedupMsg.className = 'msg';
-      const res = await apiFetch('/api/admin/teachers/dedup', { method: 'POST' });
+      const res = await apiFetch('/api/admin/teachers/sync', { method: 'POST' });
       const data = await res.json();
       if (res.ok) {
-        dedupMsg.textContent = `> DONE — ${data.deleted.length} DUPLICATE(S) REMOVED`;
+        dedupMsg.textContent = `> DONE — ${data.created.length} ENTRY(S) CREATED`;
         dedupMsg.className = 'msg ok';
         // Reload list
         const r2 = await apiFetch('/api/admin/teachers');

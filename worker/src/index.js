@@ -7,7 +7,7 @@ import {
   getSettings, updateSettings, hackServers, hackLoot,
   getMemorial, updateMemorial,
   listTeachers, createTeacher, updateTeacher, deleteTeacher,
-  getTeacherMe, updateTeacherMe, deduplicateTeachers
+  getTeacherMe, updateTeacherMe, syncTeachersFromStudents
 } from './students.js';
 import { FirestoreDB } from './firestore.js';
 
@@ -196,9 +196,9 @@ export default {
         if (method === 'PUT')    return addCors(await updateTeacher(id, request, db));
         if (method === 'DELETE') return addCors(await deleteTeacher(id, db));
       }
-      // One-shot dedup: POST /api/admin/teachers/dedup
-      if (path === '/api/admin/teachers/dedup' && method === 'POST') {
-        return addCors(await deduplicateTeachers(db));
+      // One-shot sync: POST /api/admin/teachers/sync
+      if (path === '/api/admin/teachers/sync' && method === 'POST') {
+        return addCors(await syncTeachersFromStudents(db));
       }
 
       // Memorial / Yearbook
