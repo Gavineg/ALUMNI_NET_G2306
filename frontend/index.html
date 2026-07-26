@@ -290,8 +290,10 @@
       }) ?? [];
       const originFinalSize = lastMapData?.originIcon === 'crosshair' ? 18 : 12;
 
+      function easeInOut(t) { return t < 0.5 ? 2*t*t : -1+(4-2*t)*t; }
+
       for (let i = STEPS; i >= 0; i--) {
-        const op = i / STEPS;
+        const op = easeInOut(i / STEPS);
         const seriesUpdates = [];
         // 原点：opacity + symbolSize 同步缩小，涟漪随 opacity 自然消失
         seriesUpdates.push({ id: 'origin',
@@ -343,7 +345,7 @@
       }
 
       for (let i = 0; i <= STEPS; i++) {
-        const op = i / STEPS;
+        const op = easeInOut(i / STEPS);
         const seriesUpdates = [];
         seriesUpdates.push({ id: 'origin',
           symbolSize: originFinalSize * op,
