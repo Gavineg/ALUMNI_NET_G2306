@@ -34,21 +34,26 @@ export function launchParticles(chart, originCoords, linesData, scatterData, fli
 
 // 出发点图标出现动画：从 0 easeOutBack 扩到目标大小
 function _animOrigin(chart, symbol, originCoords, finalSize) {
+  // 先注册占位系列（opacity:0），动画结束后一次 setOption 到最终态
+  // 避免每帧 setOption 的 ECharts layout 开销
+  chart.setOption({ series: [{
+    id: 'origin', type: 'effectScatter', coordinateSystem: 'geo', zlevel: 4,
+    symbol, symbolSize: 0.01, animation: false,
+    data: [{ name: 'ORIGIN', value: originCoords }],
+    showEffectOn: 'render',
+    rippleEffect: { brushType: 'stroke', scale: 3, period: 2 },
+    itemStyle: { ...ICON_COLOR, opacity: 0 }, label: { show: false }
+  }]});
   const DURATION = 500;
   const t0 = performance.now();
   function frame(now) {
     const t = Math.min((now - t0) / DURATION, 1);
-    const sz = Math.max(0.01, _easeOutBack(t) * finalSize);
-    const op = Math.min(t * 3, 1);
+    if (t < 1) { requestAnimationFrame(frame); return; }
     chart.setOption({ series: [{
-      id: 'origin', type: 'effectScatter', coordinateSystem: 'geo', zlevel: 4,
-      symbol, symbolSize: sz, animation: false,
-      data: [{ name: 'ORIGIN', value: originCoords }],
-      showEffectOn: 'render',
-      rippleEffect: { brushType: 'stroke', scale: 3, period: 2 },
-      itemStyle: { ...ICON_COLOR, opacity: op }, label: { show: false }
+      id: 'origin', symbolSize: finalSize,
+      data: [{ name: 'ORIGIN', value: originCoords,
+        itemStyle: { ...ICON_COLOR, opacity: 1 } }]
     }]});
-    if (t < 1) requestAnimationFrame(frame);
   }
   requestAnimationFrame(frame);
 }
@@ -98,8 +103,11 @@ function _cometCanvas(chart, linesData, scatterData, flightTime) {
 
   const arrived = new Array(linesData.length).fill(false);
   const TRAIL = 0.25;
-  const MAX_DELAY = 400; // 最大出发延迟 ms
-  const DURATION_JITTER = 0.3; // 飞行时长随机波动 ±30%
+  const MAX_DELAY = 400;
+  const DURATION_JITTER = 0.3;
+  const isMobile = window.innerWidth < 768 || 'ontouchstart' in window;
+  const TAIL_STEPS = isMobile ? 12 : 24;  // 手机端减半，降低每帧 canvas 开销
+  const DASH_STEPS  = isMobile ? 20 : 40; // 虚线采样点同样减半
   // 每条线独立随机：出发延迟 + 飞行时长，确保到达时间充分分散
   const lineParams = linesData.map(() => {
     const delay    = Math.random() * MAX_DELAY;
@@ -141,11 +149,10 @@ function _cometCanvas(chart, linesData, scatterData, flightTime) {
         ctx.strokeStyle = 'rgba(184,255,71,0.38)';
         ctx.lineWidth = 1;
         ctx.beginPath();
-        const steps = 40;
         const [sx, sy] = _bezierPt(ox, oy, cx, cy, ex, ey, 0);
         ctx.moveTo(sx, sy);
-        for (let s = 1; s <= steps; s++) {
-          const st = (s / steps) * t;
+        for (let s = 1; s <= DASH_STEPS; s++) {
+          const st = (s / DASH_STEPS) * t;
           const [px, py] = _bezierPt(ox, oy, cx, cy, ex, ey, st);
           ctx.lineTo(px, py);
         }
@@ -155,7 +162,6 @@ function _cometCanvas(chart, linesData, scatterData, flightTime) {
         // 流光：前端亮、后端暗，无尖锐头部，纯绿渐变
         if (t < 1) {
           const tailStart = Math.max(0, t - TRAIL);
-          const TAIL_STEPS = 24;
           for (let s = 0; s < TAIL_STEPS; s++) {
             const ta = tailStart + (t - tailStart) * (s / TAIL_STEPS);
             const tb = tailStart + (t - tailStart) * ((s + 1) / TAIL_STEPS);
@@ -259,15 +265,13 @@ function _nodeAnimTick(now) {
     const t = Math.min((now - item.startTime) / DURATION, 1);
     const sz = Math.max(0.01, _easeOutBack(t) * item.finalSize);
     const op = Math.min(t * 2, 1);
+    // 只传每帧变化的字段，type/coordinateSystem 等不变字段不重复传
     updates.push({
-      id: `target-${item.idx}`, type: 'effectScatter', coordinateSystem: 'geo', zlevel: 3,
-      symbol: 'circle', symbolSize: sz, animation: false,
+      id: `target-${item.idx}`,
+      symbolSize: sz,
       data: [{ name: item.node.name, value: item.node.value,
         itemStyle: { color: item.node.nodeColor, opacity: op,
           shadowBlur: op * 14, shadowColor: item.node.nodeColor } }],
-      showEffectOn: 'render',
-      rippleEffect: { brushType: 'stroke', scale: 2.5, period: 1.8 },
-      label: { show: false },
     });
     if (t >= 1) _nodeAnimQueue.splice(i, 1);
     else anyPending = true;
@@ -296,6 +300,16 @@ function _nodeAnimTick(now) {
 
 function _revealOneNode(chart, { node, finalSize }, idx, delay = 0) {
   setTimeout(() => {
+    // 首次注册：带完整结构字段，后续帧只传变化字段
+    chart.setOption({ series: [{
+      id: `target-${idx}`, type: 'effectScatter', coordinateSystem: 'geo', zlevel: 3,
+      symbol: 'circle', symbolSize: 0.01, animation: false,
+      data: [{ name: node.name, value: node.value,
+        itemStyle: { color: node.nodeColor, opacity: 0, shadowBlur: 0 } }],
+      showEffectOn: 'render',
+      rippleEffect: { brushType: 'stroke', scale: 2.5, period: 1.8 },
+      label: { show: false },
+    }]});
     _nodeAnimQueue.push({ chart, node, finalSize, idx, startTime: performance.now() });
     if (!_nodeAnimRaf) {
       _nodeAnimRaf = requestAnimationFrame(_nodeAnimTick);
@@ -431,15 +445,18 @@ function _staticLineStyle(mode) {
 export async function revealTargets(chart, scatterData, linesData, colorMode, opts = {}) {
   const { nodeAnim = 'expand', lineAnim = 'comet' } = opts;
 
-  // comet 模式：节点已由 _cometCanvas 触发，只需启动持续小彗星
+  // comet 模式：节点已由 _cometCanvas 触发，只需启动持续小彗星（手机端跳过，省性能）
   if (lineAnim === 'comet') {
     await _sleep(120);
-    chart.setOption({ series: [{
-      id: 'pulse-lines', type: 'lines', coordinateSystem: 'geo', zlevel: 1,
-      effect: { show: true, period: 3.5, trailLength: 0.3,
-                color: 'rgba(184,255,71,0.6)', symbolSize: 3 },
-      lineStyle: { color: 'rgba(0,0,0,0)', width: 0, curveness: 0.22 }, data: linesData
-    }]});
+    const mobile = window.innerWidth < 768 || 'ontouchstart' in window;
+    if (!mobile) {
+      chart.setOption({ series: [{
+        id: 'pulse-lines', type: 'lines', coordinateSystem: 'geo', zlevel: 1,
+        effect: { show: true, period: 3.5, trailLength: 0.3,
+                  color: 'rgba(184,255,71,0.6)', symbolSize: 3 },
+        lineStyle: { color: 'rgba(0,0,0,0)', width: 0, curveness: 0.22 }, data: linesData
+      }]});
+    }
     return;
   }
 
