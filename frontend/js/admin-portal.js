@@ -151,6 +151,14 @@ function openStudentModal(root, student) {
       <label class="field-label">&gt; CUSTOM_STATUS</label>
       <input class="hud-input" id="m-status" value="${student?.status_text || ''}">
     </div>
+    ${!isNew && student?.avatar_url ? `
+    <div class="field-group">
+      <label class="field-label">&gt; UPLOADED_IMAGE</label>
+      <div style="position:relative;display:inline-block">
+        <img src="${student.avatar_url}" style="display:block;max-width:100%;max-height:160px;border:1px solid var(--hud-border)">
+        <button id="m-del-avatar" style="position:absolute;top:4px;right:4px;background:rgba(0,0,0,0.7);border:1px solid var(--hud-danger);color:var(--hud-danger);font-size:10px;padding:2px 7px;cursor:pointer">[DELETE]</button>
+      </div>
+    </div>` : ''}
     <div class="field-group">
       <div style="display:flex;gap:16px;align-items:center;flex-wrap:wrap">
 
@@ -263,6 +271,17 @@ function openStudentModal(root, student) {
   }
 
   box.querySelector('#m-close-btn').addEventListener('click', () => { modal.style.display = 'none'; });
+
+  if (!isNew && student?.avatar_url) {
+    box.querySelector('#m-del-avatar')?.addEventListener('click', async () => {
+      if (!confirm('DELETE THIS IMAGE?')) return;
+      const res = await apiFetch(`/api/admin/students/${editingId}`, { method: 'PUT', body: JSON.stringify({ avatar_url: null }) });
+      if (res.ok) {
+        box.querySelector('#m-del-avatar').closest('.field-group').remove();
+      }
+    });
+  }
+
   modal.style.display = 'flex';
 
   // Load teacher entry block for teacher accounts

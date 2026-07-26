@@ -273,6 +273,14 @@ async function showStudentInfo(unis) {
         ...(m.status ? [{ text: `  STATUS : ${m.status}` }] : []),
         { text: `  READY_FOR_FOOD : ${m.canCengfan ? '[READY]' : '[NOT_READY]'}`, status: m.canCengfan ? 'OK' : 'ERR' }
       ]);
+      if (m.avatar && session === currentSession) {
+        const img = document.createElement('img');
+        img.src = m.avatar;
+        img.style.cssText = 'display:block;max-width:100%;max-height:200px;margin:6px 0 10px 0;border:1px solid var(--hud-border);opacity:0;transition:opacity 0.4s';
+        terminal.appendChild(img);
+        terminal.scrollTop = terminal.scrollHeight;
+        img.onload = () => { img.style.opacity = '1'; terminal.scrollTop = terminal.scrollHeight; };
+      }
     }
   }
 

@@ -48,7 +48,8 @@ export async function mapData(db) {
     }
     uniMap[s.university].members.push({
       name: s.display_name, major: s.major,
-      status: s.status_text, canCengfan: !!s.can_cengfan
+      status: s.status_text, canCengfan: !!s.can_cengfan,
+      avatar: s.avatar_url || null
     });
   }
 
@@ -158,7 +159,7 @@ export async function adminUpdateStudent(id, request, db) {
   if (!body) return json({ error: 'invalid json' }, 400);
 
   const allowed = ['username', 'display_name', 'university', 'major', 'city', 'longitude', 'latitude', 'status_text', 'can_cengfan', 'is_admin', 'is_teacher',
-                   'server_hostname', 'server_ip', 'server_theme', 'server_difficulty', 'server_ports', 'hack_loot'];
+                   'server_hostname', 'server_ip', 'server_theme', 'server_difficulty', 'server_ports', 'hack_loot', 'avatar_url'];
   const update = {};
   for (const k of allowed) {
     if (k in body) update[k] = body[k];
