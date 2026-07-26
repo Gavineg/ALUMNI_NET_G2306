@@ -230,7 +230,7 @@ function _cometCanvas(chart, linesData, scatterData, flightTime) {
         cvs._redrawDashes = redrawDashes;
 
         // 注册透明大圆作为 click hit area（视觉节点在 ECharts target-* 系列）
-        const hitMult = (window.innerWidth < 768 || 'ontouchstart' in window) ? 5 : 3.5;
+        const hitMult = 3.5;
         const hitSeries = linesData.map((_, i) => {
           const info = lineToNodeInfo[i];
           if (!info) return null;
@@ -300,7 +300,7 @@ function _nodeAnimTick(now) {
     _nodeAnimRaf = null;
     // 动画全部完成后，叠加透明大圆扩大点击区域（手机端更大）
     if (chart && updates.length) {
-      const hitMult = (window.innerWidth < 768 || 'ontouchstart' in window) ? 5 : 3.5;
+      const hitMult = 3.5;
       const hitSeries = updates.map(u => ({
         id: `target-hit-${u.id.replace('target-', '')}`, type: 'effectScatter', coordinateSystem: 'geo', zlevel: 3,
         symbol: 'circle', symbolSize: u.symbolSize * hitMult, animation: false,

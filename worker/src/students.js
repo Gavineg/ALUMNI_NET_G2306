@@ -58,10 +58,9 @@ export async function mapData(db) {
       longitude: parseFloat(settingsMap.originLon),
       latitude:  parseFloat(settingsMap.originLat),
       school:    settingsMap.originSchool || '',
-      teachers:  teacherDocs.map(d => ({
-        id: d.id, name: d.name || '', subject: d.subject || '',
-        contact: d.contact || '', note: d.note || ''
-      }))
+      teachers:  [...teacherDocs]
+        .sort((a, b) => (a.sort_order ?? 999) - (b.sort_order ?? 999))
+        .map(d => ({ id: d.id, name: d.name || '', subject: d.subject || '', contact: d.contact || '', note: d.note || '' }))
     },
     colorMode:    settingsMap.colorMode,
     unifiedColor: settingsMap.unifiedColor,
@@ -267,9 +266,10 @@ export async function updateSettings(request, db) {
 
 export async function listTeachers(db) {
   const docs = await db.list('teachers');
+  docs.sort((a, b) => (a.sort_order ?? 999) - (b.sort_order ?? 999));
   return json(docs.map(d => ({
     id: d.id, name: d.name || '', subject: d.subject || '',
-    contact: d.contact || '', note: d.note || ''
+    contact: d.contact || '', note: d.note || '', sort_order: d.sort_order ?? 0
   })));
 }
 
@@ -277,10 +277,11 @@ export async function createTeacher(request, db) {
   const body = await request.json().catch(() => null);
   if (!body?.name) return json({ error: 'name required' }, 400);
   const doc = await db.add('teachers', {
-    name:    String(body.name).slice(0, 50),
-    subject: String(body.subject || '').slice(0, 50),
-    contact: String(body.contact || '').slice(0, 100),
-    note:    String(body.note    || '').slice(0, 200),
+    name:       String(body.name).slice(0, 50),
+    subject:    String(body.subject || '').slice(0, 50),
+    contact:    String(body.contact || '').slice(0, 100),
+    note:       String(body.note    || '').slice(0, 200),
+    sort_order: typeof body.sort_order === 'number' ? body.sort_order : 999,
   });
   return json({ ok: true, id: doc.id }, 201);
 }
@@ -289,10 +290,11 @@ export async function updateTeacher(id, request, db) {
   const body = await request.json().catch(() => null);
   if (!body) return json({ error: 'invalid json' }, 400);
   const update = {};
-  if ('name'    in body) update.name    = String(body.name).slice(0, 50);
-  if ('subject' in body) update.subject = String(body.subject).slice(0, 50);
-  if ('contact' in body) update.contact = String(body.contact).slice(0, 100);
-  if ('note'    in body) update.note    = String(body.note).slice(0, 200);
+  if ('name'       in body) update.name       = String(body.name).slice(0, 50);
+  if ('subject'    in body) update.subject    = String(body.subject).slice(0, 50);
+  if ('contact'    in body) update.contact    = String(body.contact).slice(0, 100);
+  if ('note'       in body) update.note       = String(body.note).slice(0, 200);
+  if ('sort_order' in body) update.sort_order = Number(body.sort_order) || 0;
   if (!Object.keys(update).length) return json({ error: 'nothing to update' }, 400);
   await db.set('teachers', id, update);
   return json({ ok: true });

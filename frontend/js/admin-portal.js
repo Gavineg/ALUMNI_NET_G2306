@@ -57,7 +57,7 @@ async function renderStudents(content, root) {
       <table class="hud-table" id="students-table">
         <thead><tr>
           <th>ID</th><th>USERNAME</th><th>NAME</th>
-          <th>UNIVERSITY</th><th>MAJOR</th><th>READY_FOR_FOOD</th><th>ADMIN</th>
+          <th>UNIVERSITY</th><th>MAJOR</th><th>READY_FOR_FOOD</th><th>ROLE</th>
         </tr></thead>
         <tbody id="students-tbody"></tbody>
       </table>
@@ -91,7 +91,7 @@ function renderStudentRows(content, list) {
       <td style="color:${s.can_cengfan ? 'var(--hud-primary)' : 'var(--hud-danger)'}">
         ${s.can_cengfan ? '[YES]' : '[NO]'}
       </td>
-      <td>${s.is_admin ? '[ADM]' : '—'}</td>
+      <td>${s.is_admin ? '[ADM]' : s.is_teacher ? '[TCH]' : '—'}</td>
     </tr>
   `).join('');
 
@@ -162,6 +162,11 @@ function openStudentModal(root, student) {
         <option value="0" ${!student?.is_admin ? 'selected' : ''}>NO</option>
         <option value="1" ${student?.is_admin ? 'selected' : ''}>YES</option>
       </select>
+      <label class="field-label" style="margin:0">&gt; IS_TEACHER</label>
+      <select class="hud-input" id="m-teacher" style="width:auto">
+        <option value="0" ${!student?.is_teacher ? 'selected' : ''}>NO</option>
+        <option value="1" ${student?.is_teacher ? 'selected' : ''}>YES</option>
+      </select>
     </div>
     <div style="display:flex;gap:8px;margin-top:18px">
       <button class="hud-btn full" id="m-save-btn">[SAVE]</button>
@@ -208,7 +213,8 @@ function openStudentModal(root, student) {
       latitude:     parseFloat(box.querySelector('#m-lat').value) || null,
       status_text:  box.querySelector('#m-status').value.trim(),
       can_cengfan:  parseInt(box.querySelector('#m-cengfan').value),
-      is_admin:     parseInt(box.querySelector('#m-admin').value)
+      is_admin:     parseInt(box.querySelector('#m-admin').value),
+      is_teacher:   parseInt(box.querySelector('#m-teacher').value)
     };
     const pw = box.querySelector('#m-password').value;
     if (pw) payload.password = pw;
@@ -439,12 +445,13 @@ async function renderSettings(content) {
   content.querySelector('#cfg-save-btn').addEventListener('click', async () => {
     // collect teachers from rows
     const teacherRows = [...content.querySelectorAll('.cfg-teacher-row')];
-    const teachers = teacherRows.map(row => ({
-      id:      row.dataset.id || '',
-      name:    row.querySelector('.t-name').value.trim(),
-      subject: row.querySelector('.t-subject').value.trim(),
-      contact: row.querySelector('.t-contact').value.trim(),
-      note:    row.querySelector('.t-note').value.trim(),
+    const teachers = teacherRows.map((row, i) => ({
+      id:         row.dataset.id || '',
+      name:       row.querySelector('.t-name').value.trim(),
+      subject:    row.querySelector('.t-subject').value.trim(),
+      contact:    row.querySelector('.t-contact').value.trim(),
+      note:       row.querySelector('.t-note').value.trim(),
+      sort_order: i,
     })).filter(t => t.name);
 
     const payload = {
@@ -489,7 +496,7 @@ async function initTeacherList(content) {
   renderTeacherRows(listEl, _existingTeachers);
 
   content.querySelector('#cfg-add-teacher-btn').addEventListener('click', () => {
-    _existingTeachers.push({ id: '', name: '', subject: '', contact: '', note: '' });
+    _existingTeachers.push({ id: '', name: '', subject: '', contact: '', note: '', sort_order: _existingTeachers.length });
     renderTeacherRows(listEl, _existingTeachers);
   });
 }
@@ -498,7 +505,13 @@ function renderTeacherRows(listEl, teachers) {
   listEl.innerHTML = teachers.map((t, i) => `
     <div class="cfg-teacher-row" data-id="${t.id || ''}" data-idx="${i}"
          style="border:1px dashed var(--hud-border);padding:10px;margin-bottom:8px;border-radius:2px">
-      <div style="display:flex;gap:6px;margin-bottom:6px">
+      <div style="display:flex;gap:6px;margin-bottom:6px;align-items:center">
+        <div style="display:flex;flex-direction:column;gap:2px;margin-right:2px">
+          <button class="hud-btn ghost cfg-move-up" data-idx="${i}"
+                  style="font-size:10px;padding:1px 6px;line-height:1.2" ${i === 0 ? 'disabled' : ''}>▲</button>
+          <button class="hud-btn ghost cfg-move-dn" data-idx="${i}"
+                  style="font-size:10px;padding:1px 6px;line-height:1.2" ${i === teachers.length - 1 ? 'disabled' : ''}>▼</button>
+        </div>
         <input class="hud-input t-name"    value="${escH(t.name)}"    placeholder="NAME *"    style="flex:1">
         <input class="hud-input t-subject" value="${escH(t.subject)}" placeholder="SUBJECT"   style="flex:1">
       </div>
@@ -511,12 +524,42 @@ function renderTeacherRows(listEl, teachers) {
     </div>
   `).join('');
 
+  listEl.querySelectorAll('.cfg-move-up').forEach(btn => {
+    btn.addEventListener('click', () => {
+      const idx = parseInt(btn.dataset.idx);
+      if (idx === 0) return;
+      _captureTeacherInputs(listEl);
+      [_existingTeachers[idx - 1], _existingTeachers[idx]] = [_existingTeachers[idx], _existingTeachers[idx - 1]];
+      renderTeacherRows(listEl, _existingTeachers);
+    });
+  });
+  listEl.querySelectorAll('.cfg-move-dn').forEach(btn => {
+    btn.addEventListener('click', () => {
+      const idx = parseInt(btn.dataset.idx);
+      if (idx >= _existingTeachers.length - 1) return;
+      _captureTeacherInputs(listEl);
+      [_existingTeachers[idx], _existingTeachers[idx + 1]] = [_existingTeachers[idx + 1], _existingTeachers[idx]];
+      renderTeacherRows(listEl, _existingTeachers);
+    });
+  });
   listEl.querySelectorAll('.cfg-del-teacher').forEach(btn => {
     btn.addEventListener('click', () => {
+      _captureTeacherInputs(listEl);
       const idx = parseInt(btn.dataset.idx);
       _existingTeachers.splice(idx, 1);
       renderTeacherRows(listEl, _existingTeachers);
     });
+  });
+}
+
+function _captureTeacherInputs(listEl) {
+  listEl.querySelectorAll('.cfg-teacher-row').forEach((row, i) => {
+    if (_existingTeachers[i]) {
+      _existingTeachers[i].name    = row.querySelector('.t-name').value;
+      _existingTeachers[i].subject = row.querySelector('.t-subject').value;
+      _existingTeachers[i].contact = row.querySelector('.t-contact').value;
+      _existingTeachers[i].note    = row.querySelector('.t-note').value;
+    }
   });
 }
 
