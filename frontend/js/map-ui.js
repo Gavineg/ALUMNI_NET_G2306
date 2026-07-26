@@ -301,7 +301,18 @@ export function clearTerminal() {
 }
 
 export function flyToCoord(lon, lat) {
-  chartRef?.setOption({ geo: { zoom: 6, center: [lon, lat] } });
+  chartRef?.setOption({ geo: { zoom: 6, center: [lon, lat], animationDurationUpdate: 600 } });
+  // 飞行动画期间持续重绘 canvas 虚线（animated geo 不触发 georoam）
+  const cometCvs = document.getElementById('comet-canvas');
+  if (cometCvs?._redrawDashes && chartRef) {
+    const redraw = cometCvs._redrawDashes;
+    const deadline = performance.now() + 700;
+    function onRendered() {
+      redraw();
+      if (performance.now() >= deadline) chartRef.off('rendered', onRendered);
+    }
+    chartRef.on('rendered', onRendered);
+  }
 }
 
 // ── 关闭面板 ──────────────────────────────────────────────────
