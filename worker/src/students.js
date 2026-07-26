@@ -269,7 +269,8 @@ export async function listTeachers(db) {
   docs.sort((a, b) => (a.sort_order ?? 999) - (b.sort_order ?? 999));
   return json(docs.map(d => ({
     id: d.id, name: d.name || '', subject: d.subject || '',
-    contact: d.contact || '', note: d.note || '', sort_order: d.sort_order ?? 0
+    contact: d.contact || '', note: d.note || '', sort_order: d.sort_order ?? 0,
+    student_id: d.student_id || null,
   })));
 }
 
@@ -282,6 +283,7 @@ export async function createTeacher(request, db) {
     contact:    String(body.contact || '').slice(0, 100),
     note:       String(body.note    || '').slice(0, 200),
     sort_order: typeof body.sort_order === 'number' ? body.sort_order : 999,
+    student_id: body.student_id ? String(body.student_id) : null,
   });
   return json({ ok: true, id: doc.id }, 201);
 }
@@ -295,6 +297,7 @@ export async function updateTeacher(id, request, db) {
   if ('contact'    in body) update.contact    = String(body.contact).slice(0, 100);
   if ('note'       in body) update.note       = String(body.note).slice(0, 200);
   if ('sort_order' in body) update.sort_order = Number(body.sort_order) || 0;
+  if ('student_id' in body) update.student_id = body.student_id ? String(body.student_id) : null;
   if (!Object.keys(update).length) return json({ error: 'nothing to update' }, 400);
   await db.set('teachers', id, update);
   return json({ ok: true });

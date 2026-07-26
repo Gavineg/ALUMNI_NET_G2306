@@ -182,6 +182,11 @@ function openStudentModal(root, student) {
       <button class="hud-btn ghost" id="m-close-btn">[CANCEL]</button>
     </div>
     <div class="msg" id="m-msg"></div>
+    ${!isNew && student?.is_teacher ? `
+    <div id="m-teacher-entry" style="border-top:1px dashed var(--hud-border);margin-top:18px;padding-top:14px">
+      <div class="panel-title" style="font-size:11px;margin-bottom:10px">&gt; TEACHER_ENTRY (地图原点显示)</div>
+      <div id="m-te-body" style="font-size:11px;color:var(--hud-text-dim)">&gt; LOADING...</div>
+    </div>` : ''}
   `;
 
   // 临时存坐标
@@ -259,6 +264,104 @@ function openStudentModal(root, student) {
 
   box.querySelector('#m-close-btn').addEventListener('click', () => { modal.style.display = 'none'; });
   modal.style.display = 'flex';
+
+  // Load teacher entry block for teacher accounts
+  if (!isNew && student?.is_teacher) {
+    loadTeacherEntry(box, student.id, student.display_name);
+  }
+}
+
+// ── Teacher entry block (inside student modal) ───────────────
+
+async function loadTeacherEntry(box, studentId, displayName) {
+  const body = box.querySelector('#m-te-body');
+  if (!body) return;
+
+  // Find linked teacher doc (student_id == studentId)
+  let entry = null;
+  try {
+    const res  = await apiFetch('/api/admin/teachers');
+    const list = res.ok ? await res.json() : [];
+    entry = list.find(t => t.student_id === studentId) || null;
+  } catch {}
+
+  function render(e) {
+    const name    = e?.name    ?? displayName ?? '';
+    const subject = e?.subject ?? '';
+    const contact = e?.contact ?? '';
+    const note    = e?.note    ?? '';
+    const entryId = e?.id      ?? '';
+
+    body.innerHTML = `
+      <div style="display:flex;gap:6px;margin-bottom:6px">
+        <input class="hud-input te-name"    value="${escH(name)}"    placeholder="NAME *"    style="flex:1;font-size:11px">
+        <input class="hud-input te-subject" value="${escH(subject)}" placeholder="SUBJECT"   style="flex:1;font-size:11px">
+      </div>
+      <div style="display:flex;gap:6px;margin-bottom:8px">
+        <input class="hud-input te-contact" value="${escH(contact)}" placeholder="CONTACT (OPTIONAL)" style="flex:1;font-size:11px">
+        <input class="hud-input te-note"    value="${escH(note)}"    placeholder="NOTE (OPTIONAL)"    style="flex:1;font-size:11px">
+      </div>
+      <div style="display:flex;gap:6px;align-items:center">
+        <button class="hud-btn ghost te-save-btn" style="font-size:10px;padding:3px 10px">${entryId ? '[SAVE_ENTRY]' : '[CREATE_ENTRY]'}</button>
+        ${entryId ? `<button class="hud-btn ghost te-del-btn" style="font-size:10px;padding:3px 10px;color:var(--hud-danger)">[REMOVE_FROM_MAP]</button>` : ''}
+        <span class="msg te-msg" style="font-size:10px"></span>
+      </div>
+    `;
+
+    body.querySelector('.te-save-btn').addEventListener('click', async () => {
+      const payload = {
+        name:       body.querySelector('.te-name').value.trim(),
+        subject:    body.querySelector('.te-subject').value.trim(),
+        contact:    body.querySelector('.te-contact').value.trim(),
+        note:       body.querySelector('.te-note').value.trim(),
+        student_id: studentId,
+      };
+      if (!payload.name) { body.querySelector('.te-msg').textContent = '> NAME REQUIRED'; return; }
+      const msg = body.querySelector('.te-msg');
+      msg.textContent = '> SAVING...'; msg.className = 'msg';
+      let res;
+      if (entryId) {
+        res = await apiFetch(`/api/admin/teachers/${entryId}`, { method: 'PUT', body: JSON.stringify(payload) });
+      } else {
+        res = await apiFetch('/api/admin/teachers', { method: 'POST', body: JSON.stringify(payload) });
+      }
+      if (res.ok) {
+        // Reload to get the new id
+        const list2 = await (await apiFetch('/api/admin/teachers')).json();
+        entry = list2.find(t => t.student_id === studentId) || null;
+        render(entry);
+        body.querySelector('.te-msg').textContent = '> SAVED [OK]';
+        body.querySelector('.te-msg').className = 'msg ok';
+        // Refresh map settings teacher list if it's open
+        const cfgList = document.querySelector('#cfg-teachers-list');
+        if (cfgList) {
+          const r2 = await apiFetch('/api/admin/teachers');
+          _existingTeachers = r2.ok ? await r2.json() : _existingTeachers;
+          renderTeacherRows(cfgList, _existingTeachers);
+        }
+      } else {
+        body.querySelector('.te-msg').textContent = '> [ERR] SAVE FAILED';
+        body.querySelector('.te-msg').className = 'msg err';
+      }
+    });
+
+    if (entryId) {
+      body.querySelector('.te-del-btn').addEventListener('click', async () => {
+        if (!confirm('REMOVE THIS TEACHER FROM MAP?')) return;
+        await apiFetch(`/api/admin/teachers/${entryId}`, { method: 'DELETE' });
+        entry = null;
+        render(null);
+        const cfgList = document.querySelector('#cfg-teachers-list');
+        if (cfgList) {
+          const r2 = await apiFetch('/api/admin/teachers');
+          _existingTeachers = r2.ok ? await r2.json() : _existingTeachers;
+          renderTeacherRows(cfgList, _existingTeachers);
+        }
+      });
+    }
+  }
+
+  render(entry);
 }
 
 // ── Banned words tab ────────────────────────────────────────
@@ -352,9 +455,9 @@ async function renderSettings(content) {
       </div>
 
       <div style="border-top:1px dashed var(--hud-border);padding-top:18px;margin-bottom:20px">
-        <div class="panel-title" style="font-size:12px;margin-bottom:12px">&gt; TEACHERS</div>
+        <div class="panel-title" style="font-size:12px;margin-bottom:4px">&gt; TEACHERS</div>
+        <div style="font-size:10px;color:var(--hud-text-dim);margin-bottom:12px">&gt; ADD / REMOVE TEACHERS IN [STUDENTS] TAB (IS_TEACHER ACCOUNT). SORT ORDER ONLY HERE.</div>
         <div id="cfg-teachers-list"></div>
-        <button class="hud-btn ghost" id="cfg-add-teacher-btn" style="margin-top:8px;font-size:11px">[+ ADD TEACHER]</button>
       </div>
 
       <div style="border-top:1px dashed var(--hud-border);padding-top:18px;margin-bottom:20px">
@@ -451,17 +554,6 @@ async function renderSettings(content) {
   });
 
   content.querySelector('#cfg-save-btn').addEventListener('click', async () => {
-    // collect teachers from rows
-    const teacherRows = [...content.querySelectorAll('.cfg-teacher-row')];
-    const teachers = teacherRows.map((row, i) => ({
-      id:         row.dataset.id || '',
-      name:       row.querySelector('.t-name').value.trim(),
-      subject:    row.querySelector('.t-subject').value.trim(),
-      contact:    row.querySelector('.t-contact').value.trim(),
-      note:       row.querySelector('.t-note').value.trim(),
-      sort_order: i,
-    })).filter(t => t.name);
-
     const payload = {
       originName:    content.querySelector('#cfg-oname').value.trim(),
       originLon:     content.querySelector('#cfg-olon').value.trim(),
@@ -476,10 +568,10 @@ async function renderSettings(content) {
     const msg = content.querySelector('#cfg-msg');
     msg.textContent = '> SAVING...'; msg.className = 'msg';
 
-    // Save settings and sync teachers in parallel
+    // Save settings and sync teacher sort_order only
     const [settingsRes] = await Promise.all([
       apiFetch('/api/admin/settings', { method: 'PUT', body: JSON.stringify(payload) }),
-      syncTeachers(teachers),
+      syncTeacherOrder(),
     ]);
 
     if (settingsRes.ok) { msg.textContent = '> SETTINGS SAVED [OK]'; msg.className = 'msg ok'; }
@@ -490,7 +582,7 @@ async function renderSettings(content) {
   await initTeacherList(content);
 }
 
-// ── Teacher list helpers ──────────────────────────────────────
+// ── Teacher list helpers (MAP_SETTINGS — sort only) ──────────
 
 let _existingTeachers = [];
 
@@ -502,33 +594,23 @@ async function initTeacherList(content) {
     _existingTeachers = res.ok ? await res.json() : [];
   } catch { _existingTeachers = []; }
   renderTeacherRows(listEl, _existingTeachers);
-
-  content.querySelector('#cfg-add-teacher-btn').addEventListener('click', () => {
-    _existingTeachers.push({ id: '', name: '', subject: '', contact: '', note: '', sort_order: _existingTeachers.length });
-    renderTeacherRows(listEl, _existingTeachers);
-  });
 }
 
 function renderTeacherRows(listEl, teachers) {
+  if (!teachers.length) {
+    listEl.innerHTML = '<div style="font-size:11px;color:var(--hud-text-dim);padding:4px 0">&gt; NO TEACHERS YET — ADD VIA STUDENT ACCOUNTS</div>';
+    return;
+  }
   listEl.innerHTML = teachers.map((t, i) => `
     <div class="cfg-teacher-row" data-id="${t.id || ''}" data-idx="${i}"
-         style="border:1px dashed var(--hud-border);padding:10px;margin-bottom:8px;border-radius:2px">
-      <div style="display:flex;gap:6px;margin-bottom:6px;align-items:center">
-        <div style="display:flex;flex-direction:column;gap:2px;margin-right:2px">
-          <button class="hud-btn ghost cfg-move-up" data-idx="${i}"
-                  style="font-size:10px;padding:1px 6px;line-height:1.2" ${i === 0 ? 'disabled' : ''}>▲</button>
-          <button class="hud-btn ghost cfg-move-dn" data-idx="${i}"
-                  style="font-size:10px;padding:1px 6px;line-height:1.2" ${i === teachers.length - 1 ? 'disabled' : ''}>▼</button>
-        </div>
-        <input class="hud-input t-name"    value="${escH(t.name)}"    placeholder="NAME *"    style="flex:1">
-        <input class="hud-input t-subject" value="${escH(t.subject)}" placeholder="SUBJECT"   style="flex:1">
+         style="display:flex;align-items:center;gap:8px;padding:6px 0;border-bottom:1px dashed var(--hud-border)">
+      <div style="display:flex;flex-direction:column;gap:2px">
+        <button class="hud-btn ghost cfg-move-up" data-idx="${i}"
+                style="font-size:10px;padding:1px 6px;line-height:1.2" ${i === 0 ? 'disabled' : ''}>▲</button>
+        <button class="hud-btn ghost cfg-move-dn" data-idx="${i}"
+                style="font-size:10px;padding:1px 6px;line-height:1.2" ${i === teachers.length - 1 ? 'disabled' : ''}>▼</button>
       </div>
-      <div style="display:flex;gap:6px;margin-bottom:6px">
-        <input class="hud-input t-contact" value="${escH(t.contact)}" placeholder="CONTACT (OPTIONAL)" style="flex:1">
-        <input class="hud-input t-note"    value="${escH(t.note)}"    placeholder="NOTE (OPTIONAL)"    style="flex:1">
-      </div>
-      <button class="hud-btn ghost cfg-del-teacher" data-idx="${i}"
-              style="font-size:10px;padding:3px 8px;color:var(--hud-danger)">[REMOVE]</button>
+      <span style="flex:1;font-size:12px">${escH(t.name)}${t.subject ? ` <span style="color:var(--hud-text-dim);font-size:10px">/ ${escH(t.subject)}</span>` : ''}</span>
     </div>
   `).join('');
 
@@ -536,7 +618,6 @@ function renderTeacherRows(listEl, teachers) {
     btn.addEventListener('click', () => {
       const idx = parseInt(btn.dataset.idx);
       if (idx === 0) return;
-      _captureTeacherInputs(listEl);
       [_existingTeachers[idx - 1], _existingTeachers[idx]] = [_existingTeachers[idx], _existingTeachers[idx - 1]];
       renderTeacherRows(listEl, _existingTeachers);
     });
@@ -545,46 +626,18 @@ function renderTeacherRows(listEl, teachers) {
     btn.addEventListener('click', () => {
       const idx = parseInt(btn.dataset.idx);
       if (idx >= _existingTeachers.length - 1) return;
-      _captureTeacherInputs(listEl);
       [_existingTeachers[idx], _existingTeachers[idx + 1]] = [_existingTeachers[idx + 1], _existingTeachers[idx]];
       renderTeacherRows(listEl, _existingTeachers);
     });
   });
-  listEl.querySelectorAll('.cfg-del-teacher').forEach(btn => {
-    btn.addEventListener('click', () => {
-      _captureTeacherInputs(listEl);
-      const idx = parseInt(btn.dataset.idx);
-      _existingTeachers.splice(idx, 1);
-      renderTeacherRows(listEl, _existingTeachers);
-    });
-  });
 }
 
-function _captureTeacherInputs(listEl) {
-  listEl.querySelectorAll('.cfg-teacher-row').forEach((row, i) => {
-    if (_existingTeachers[i]) {
-      _existingTeachers[i].name    = row.querySelector('.t-name').value;
-      _existingTeachers[i].subject = row.querySelector('.t-subject').value;
-      _existingTeachers[i].contact = row.querySelector('.t-contact').value;
-      _existingTeachers[i].note    = row.querySelector('.t-note').value;
-    }
-  });
-}
-
-async function syncTeachers(formTeachers) {
-  // Determine creates, updates, deletes by comparing with _existingTeachers
-  const existingIds = new Set(_existingTeachers.map(t => t.id).filter(Boolean));
-  const formIds     = new Set(formTeachers.map(t => t.id).filter(Boolean));
-
-  const toDelete = _existingTeachers.filter(t => t.id && !formIds.has(t.id));
-  const toCreate = formTeachers.filter(t => !t.id);
-  const toUpdate = formTeachers.filter(t => t.id && existingIds.has(t.id));
-
-  await Promise.all([
-    ...toDelete.map(t => apiFetch(`/api/admin/teachers/${t.id}`, { method: 'DELETE' })),
-    ...toCreate.map(t => apiFetch('/api/admin/teachers', { method: 'POST', body: JSON.stringify(t) })),
-    ...toUpdate.map(t => apiFetch(`/api/admin/teachers/${t.id}`, { method: 'PUT', body: JSON.stringify(t) })),
-  ]);
+async function syncTeacherOrder() {
+  await Promise.all(
+    _existingTeachers.map((t, i) =>
+      t.id ? apiFetch(`/api/admin/teachers/${t.id}`, { method: 'PUT', body: JSON.stringify({ sort_order: i }) }) : null
+    ).filter(Boolean)
+  );
 }
 
 // ── Change Password tab ───────────────────────────────────────
