@@ -250,11 +250,20 @@ export async function runCommand(raw, ctx) {
   if (cmd === '42')   return [L('THE ANSWER TO LIFE, THE UNIVERSE, AND EVERYTHING.')];
   if (cmd === 'coffee') return [L('BREWING...'), L("418 I'M A TEAPOT", 'ERR'), L('(THIS TERMINAL CANNOT MAKE COFFEE)')];
   if (cmd === 'about' || cmd === 'credits') {
-    let githubMessage = '';
+    let githubMessage = 'UNKNOWN';
     try {
       const r = await fetch('https://api.github.com/repos/Gavineg/ALUMNI_NET_G2306/commits?per_page=1', { headers: { Accept: 'application/vnd.github.v3+json' } });
       const data = await r.json().catch(() => null);
-      githubMessage = data?.message ? String(data.message) : '';
+
+      if (data && typeof data === 'object' && 'message' in data && typeof data.message === 'string' && data.message.trim()) {
+        githubMessage = String(data.message);
+      } else if (Array.isArray(data) && data[0]?.commit?.message) {
+        githubMessage = String(data[0].commit.message);
+      } else if (r.ok) {
+        githubMessage = 'API OK';
+      } else {
+        githubMessage = 'UNAVAILABLE';
+      }
     } catch (e) {
       githubMessage = e?.message || 'UNAVAILABLE';
     }

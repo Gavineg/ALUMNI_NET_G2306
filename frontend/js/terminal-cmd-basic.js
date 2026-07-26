@@ -170,14 +170,23 @@ export async function runCommand(raw, ctx) {
     }
     // Fetch commit count from GitHub
     let commitCount = '...';
-    let githubMessage = '';
+    let githubMessage = 'UNKNOWN';
     try {
       const r = await fetch('https://api.github.com/repos/Gavineg/ALUMNI_NET_G2306/commits?per_page=1', { headers: { Accept: 'application/vnd.github.v3+json' } });
       const data = await r.json().catch(() => null);
       const link = r.headers.get('Link') || '';
       const m2 = link.match(/&page=(\d+)>; rel="last"/);
       commitCount = m2 ? m2[1] : '?';
-      githubMessage = data?.message ? String(data.message) : '';
+
+      if (data && typeof data === 'object' && 'message' in data && typeof data.message === 'string' && data.message.trim()) {
+        githubMessage = String(data.message);
+      } else if (Array.isArray(data) && data[0]?.commit?.message) {
+        githubMessage = String(data[0].commit.message);
+      } else if (r.ok) {
+        githubMessage = 'API OK';
+      } else {
+        githubMessage = 'UNAVAILABLE';
+      }
     } catch (e) {
       githubMessage = e?.message || 'UNAVAILABLE';
     }
