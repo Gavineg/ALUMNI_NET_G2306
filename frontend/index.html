@@ -272,20 +272,67 @@
     let lastMapData = null;
     boot().then(() => {}); // 保持原有启动流程
 
-    window.resetMap = function() {
-      chart.setOption({ geo: { zoom: initZoom, center: initCenter, animationDurationUpdate: 600 } });
+    window.resetMap = async function() {
       closePanel();
 
-      // geo 回归动画期间（~700ms）持续重绘 canvas 虚线
+      // ── 1. 淡出所有内容 series + canvas 虚线 ─────────────────
       const cometCvs = document.getElementById('comet-canvas');
+      const STEPS = 10, STEP_MS = 35;
+      const nodeCount = lastMapData?.scatterData?.length ?? 0;
+
+      for (let i = STEPS; i >= 0; i--) {
+        const op = i / STEPS;
+        const seriesUpdates = [];
+        // 原点
+        seriesUpdates.push({ id: 'origin', data: [{ name: 'ORIGIN',
+          value: lastMapData?.originCoords ?? [114.247, 22.723],
+          itemStyle: { color: '#ff4b1f', shadowBlur: 24 * op, shadowColor: 'rgba(255,75,31,0.8)', opacity: op } }] });
+        // 节点
+        for (let n = 0; n < nodeCount; n++) {
+          const node = lastMapData.scatterData[n];
+          const nc = node?.nodeColor ?? '#b8ff47';
+          seriesUpdates.push({ id: `target-${n}`,
+            data: [{ name: node.name, value: node.value,
+              itemStyle: { color: nc, opacity: op, shadowBlur: op * 14, shadowColor: nc } }] });
+        }
+        // pulse-lines / static-lines
+        seriesUpdates.push({ id: 'pulse-lines',  lineStyle: { opacity: op } });
+        seriesUpdates.push({ id: 'static-lines', lineStyle: { opacity: op } });
+        chart.setOption({ series: seriesUpdates });
+        // comet-canvas globalAlpha
+        if (cometCvs) cometCvs.style.opacity = op;
+        await new Promise(r => setTimeout(r, STEP_MS));
+      }
+
+      // ── 2. 地图归位 ──────────────────────────────────────────
+      chart.setOption({ geo: { zoom: initZoom, center: initCenter, animationDurationUpdate: 600 } });
       if (cometCvs?._redrawDashes) {
         const redraw = cometCvs._redrawDashes;
         const deadline = performance.now() + 700;
-        function onRendered() {
-          redraw();
-          if (performance.now() >= deadline) chart.off('rendered', onRendered);
-        }
+        function onRendered() { redraw(); if (performance.now() >= deadline) chart.off('rendered', onRendered); }
         chart.on('rendered', onRendered);
+      }
+      await new Promise(r => setTimeout(r, 650));
+
+      // ── 3. 淡入 ─────────────────────────────────────────────
+      for (let i = 0; i <= STEPS; i++) {
+        const op = i / STEPS;
+        const seriesUpdates = [];
+        seriesUpdates.push({ id: 'origin', data: [{ name: 'ORIGIN',
+          value: lastMapData?.originCoords ?? [114.247, 22.723],
+          itemStyle: { color: '#ff4b1f', shadowBlur: 24 * op, shadowColor: 'rgba(255,75,31,0.8)', opacity: op } }] });
+        for (let n = 0; n < nodeCount; n++) {
+          const node = lastMapData.scatterData[n];
+          const nc = node?.nodeColor ?? '#b8ff47';
+          seriesUpdates.push({ id: `target-${n}`,
+            data: [{ name: node.name, value: node.value,
+              itemStyle: { color: nc, opacity: op, shadowBlur: op * 14, shadowColor: nc } }] });
+        }
+        seriesUpdates.push({ id: 'pulse-lines',  lineStyle: { opacity: op } });
+        seriesUpdates.push({ id: 'static-lines', lineStyle: { opacity: op } });
+        chart.setOption({ series: seriesUpdates });
+        if (cometCvs) cometCvs.style.opacity = op;
+        await new Promise(r => setTimeout(r, STEP_MS));
       }
 
       requestAnimationFrame(() => dosInput.focus());
