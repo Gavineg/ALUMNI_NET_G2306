@@ -66,9 +66,10 @@ async function getAccessToken(env) {
 function toFirestore(obj) {
   const fields = {};
   for (const [k, v] of Object.entries(obj)) {
-    if (v === null || v === undefined) continue;
-    if (typeof v === 'string')  fields[k] = { stringValue: v };
-    else if (typeof v === 'number') fields[k] = Number.isInteger(v) ? { integerValue: String(v) } : { doubleValue: v };
+    if (v === undefined) continue;
+    if (v === null)                fields[k] = { nullValue: 'NULL_VALUE' };
+    else if (typeof v === 'string')  fields[k] = { stringValue: v };
+    else if (typeof v === 'number')  fields[k] = Number.isInteger(v) ? { integerValue: String(v) } : { doubleValue: v };
     else if (typeof v === 'boolean') fields[k] = { booleanValue: v };
   }
   return { fields };
