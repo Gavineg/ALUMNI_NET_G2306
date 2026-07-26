@@ -151,22 +151,30 @@ function openStudentModal(root, student) {
       <label class="field-label">&gt; CUSTOM_STATUS</label>
       <input class="hud-input" id="m-status" value="${student?.status_text || ''}">
     </div>
-    <div class="field-group" style="display:flex;gap:16px;align-items:center">
-      <label class="field-label" style="margin:0">&gt; READY_FOR_FOOD</label>
-      <select class="hud-input" id="m-cengfan" style="width:auto">
-        <option value="1" ${student?.can_cengfan ? 'selected' : ''}>READY</option>
-        <option value="0" ${!student?.can_cengfan && student ? 'selected' : ''}>NOT_READY</option>
-      </select>
-      <label class="field-label" style="margin:0">&gt; IS_ADMIN</label>
-      <select class="hud-input" id="m-admin" style="width:auto">
-        <option value="0" ${!student?.is_admin ? 'selected' : ''}>NO</option>
-        <option value="1" ${student?.is_admin ? 'selected' : ''}>YES</option>
-      </select>
-      <label class="field-label" style="margin:0">&gt; IS_TEACHER</label>
-      <select class="hud-input" id="m-teacher" style="width:auto">
-        <option value="0" ${!student?.is_teacher ? 'selected' : ''}>NO</option>
-        <option value="1" ${student?.is_teacher ? 'selected' : ''}>YES</option>
-      </select>
+    <div class="field-group">
+      <div style="display:flex;gap:16px;align-items:center;flex-wrap:wrap">
+
+        <label class="field-label" style="margin:0">&gt; READY_FOR_FOOD</label>
+        <select class="hud-input" id="m-cengfan" style="width:auto">
+          <option value="1" ${student?.can_cengfan ? 'selected' : ''}>READY</option>
+          <option value="0" ${!student?.can_cengfan && student ? 'selected' : ''}>NOT_READY</option>
+        </select>
+
+        <label class="field-label" style="margin:0">&gt; IS_ADMIN</label>
+        <select class="hud-input" id="m-admin" style="width:auto">
+          <option value="0" ${!student?.is_admin ? 'selected' : ''}>NO</option>
+          <option value="1" ${student?.is_admin ? 'selected' : ''}>YES</option>
+        </select>
+
+        <div style="flex-basis:100%;height:0"></div>
+
+        <label class="field-label" style="margin:0">&gt; IS_TEACHER</label>
+        <select class="hud-input" id="m-teacher" style="width:auto">
+          <option value="0" ${!student?.is_teacher ? 'selected' : ''}>NO</option>
+          <option value="1" ${student?.is_teacher ? 'selected' : ''}>YES</option>
+        </select>
+
+      </div>
     </div>
     <div style="display:flex;gap:8px;margin-top:18px">
       <button class="hud-btn full" id="m-save-btn">[SAVE]</button>
