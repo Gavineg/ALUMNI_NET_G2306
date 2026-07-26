@@ -34,8 +34,6 @@ export function launchParticles(chart, originCoords, linesData, scatterData, fli
 
 // 出发点图标出现动画：从 0 easeOutBack 扩到目标大小
 function _animOrigin(chart, symbol, originCoords, finalSize) {
-  // 先注册占位系列（opacity:0），动画结束后一次 setOption 到最终态
-  // 避免每帧 setOption 的 ECharts layout 开销
   chart.setOption({ series: [{
     id: 'origin', type: 'effectScatter', coordinateSystem: 'geo', zlevel: 4,
     symbol, symbolSize: 0.01, animation: false,
@@ -48,12 +46,14 @@ function _animOrigin(chart, symbol, originCoords, finalSize) {
   const t0 = performance.now();
   function frame(now) {
     const t = Math.min((now - t0) / DURATION, 1);
-    if (t < 1) { requestAnimationFrame(frame); return; }
+    const sz = Math.max(0.01, _easeOutBack(t) * finalSize);
+    const op = Math.min(t * 2, 1);
     chart.setOption({ series: [{
-      id: 'origin', symbolSize: finalSize,
+      id: 'origin', symbolSize: sz,
       data: [{ name: 'ORIGIN', value: originCoords,
-        itemStyle: { ...ICON_COLOR, opacity: 1 } }]
+        itemStyle: { ...ICON_COLOR, opacity: op } }]
     }]});
+    if (t < 1) requestAnimationFrame(frame);
   }
   requestAnimationFrame(frame);
 }
