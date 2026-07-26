@@ -195,8 +195,9 @@ function openStudentModal(root, student) {
     </div>` : ''}
   `;
 
-  // 临时存坐标
+  // 临时存坐标 + 图片删除标记
   let tempLon = student?.longitude, tempLat = student?.latitude, tempCity = student?.city;
+  let deleteAvatar = false;
 
   box.querySelector('#m-locate-btn').addEventListener('click', async () => {
     const kw  = box.querySelector('#m-uni').value.trim();
@@ -235,6 +236,7 @@ function openStudentModal(root, student) {
       is_admin:     parseInt(box.querySelector('#m-admin').value),
       is_teacher:   parseInt(box.querySelector('#m-teacher').value)
     };
+    if (deleteAvatar) payload.avatar_url = null;
     const pw = box.querySelector('#m-password').value;
     if (pw) payload.password = pw;
     if (isNew && !pw) {
@@ -282,10 +284,9 @@ function openStudentModal(root, student) {
           <img src="${full.avatar_url}" style="display:block;max-width:100%;max-height:160px;border:1px solid var(--hud-border)">
           <button id="m-del-avatar" style="position:absolute;top:4px;right:4px;background:rgba(0,0,0,0.7);border:1px solid var(--hud-danger);color:var(--hud-danger);font-size:10px;padding:2px 7px;cursor:pointer">[DELETE]</button>
         </div>`;
-      box.querySelector('#m-del-avatar').addEventListener('click', async () => {
-        if (!confirm('DELETE THIS IMAGE?')) return;
-        const res = await apiFetch(`/api/admin/students/${editingId}`, { method: 'PUT', body: JSON.stringify({ avatar_url: null }) });
-        if (res.ok) section.remove();
+      box.querySelector('#m-del-avatar').addEventListener('click', () => {
+        deleteAvatar = true;
+        section.innerHTML = `<label class="field-label">&gt; UPLOADED_IMAGE</label><div style="font-size:11px;color:var(--hud-danger)">&gt; [MARKED FOR DELETION — WILL BE REMOVED ON SAVE]</div>`;
       });
     });
   }
