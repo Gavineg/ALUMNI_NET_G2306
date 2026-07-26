@@ -174,10 +174,35 @@ export async function adminUpdateStudent(id, request, db) {
   update.updated_at = new Date().toISOString();
 
   await db.set('students', id, update);
+
+  // Sync teachers collection when is_teacher changes
+  if ('is_teacher' in body) {
+    const linked = (await db.query('teachers', 'student_id', '==', id))[0];
+    if (body.is_teacher) {
+      // Ensure exactly one linked entry exists
+      if (!linked) {
+        const student = await db.get('students', id);
+        await db.add('teachers', {
+          student_id: id,
+          name:       update.display_name ?? student?.display_name ?? '',
+          subject:    '', contact: '', note: '', sort_order: 999,
+        });
+      } else if ('display_name' in update) {
+        // Keep name in sync if display_name also changed
+        await db.set('teachers', linked.id, { name: update.display_name });
+      }
+    } else if (linked) {
+      await db.delete('teachers', linked.id);
+    }
+  }
+
   return json({ ok: true });
 }
 
 export async function adminDeleteStudent(id, db) {
+  // Remove linked teacher entry if any
+  const linked = (await db.query('teachers', 'student_id', '==', id))[0];
+  if (linked) await db.delete('teachers', linked.id);
   await db.delete('students', id);
   return json({ ok: true });
 }
@@ -306,6 +331,35 @@ export async function updateTeacher(id, request, db) {
 export async function deleteTeacher(id, db) {
   await db.delete('teachers', id);
   return json({ ok: true });
+}
+
+// One-shot dedup: keeps one entry per name (prefers student_id-linked doc),
+// deletes all extras. Safe to call multiple times.
+export async function deduplicateTeachers(db) {
+  const docs = await db.list('teachers');
+  // Group by name (lowercased)
+  const byName = {};
+  for (const d of docs) {
+    const key = (d.name || '').toLowerCase().trim();
+    if (!byName[key]) byName[key] = [];
+    byName[key].push(d);
+  }
+  const deleted = [];
+  for (const group of Object.values(byName)) {
+    if (group.length <= 1) continue;
+    // Keep: prefer doc with student_id, then lowest sort_order, then first created
+    group.sort((a, b) => {
+      if (a.student_id && !b.student_id) return -1;
+      if (!a.student_id && b.student_id) return 1;
+      return (a.sort_order ?? 999) - (b.sort_order ?? 999);
+    });
+    const [keep, ...extras] = group;
+    for (const d of extras) {
+      await db.delete('teachers', d.id);
+      deleted.push(d.id);
+    }
+  }
+  return json({ ok: true, deleted });
 }
 
 // Teacher self-update (authenticated as teacher)

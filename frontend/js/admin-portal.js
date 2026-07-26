@@ -458,6 +458,8 @@ async function renderSettings(content) {
         <div class="panel-title" style="font-size:12px;margin-bottom:4px">&gt; TEACHERS</div>
         <div style="font-size:10px;color:var(--hud-text-dim);margin-bottom:12px">&gt; ADD / REMOVE TEACHERS IN [STUDENTS] TAB (IS_TEACHER ACCOUNT). SORT ORDER ONLY HERE.</div>
         <div id="cfg-teachers-list"></div>
+        <button class="hud-btn ghost" id="cfg-dedup-btn" style="margin-top:10px;font-size:10px;color:var(--hud-warn)">[DEDUP_TEACHERS]</button>
+        <span class="msg" id="cfg-dedup-msg" style="font-size:10px;margin-left:8px"></span>
       </div>
 
       <div style="border-top:1px dashed var(--hud-border);padding-top:18px;margin-bottom:20px">
@@ -594,6 +596,27 @@ async function initTeacherList(content) {
     _existingTeachers = res.ok ? await res.json() : [];
   } catch { _existingTeachers = []; }
   renderTeacherRows(listEl, _existingTeachers);
+
+  const dedupBtn = content.querySelector('#cfg-dedup-btn');
+  const dedupMsg = content.querySelector('#cfg-dedup-msg');
+  if (dedupBtn) {
+    dedupBtn.addEventListener('click', async () => {
+      dedupBtn.disabled = true; dedupMsg.textContent = '> RUNNING...'; dedupMsg.className = 'msg';
+      const res = await apiFetch('/api/admin/teachers/dedup', { method: 'POST' });
+      const data = await res.json();
+      if (res.ok) {
+        dedupMsg.textContent = `> DONE — ${data.deleted.length} DUPLICATE(S) REMOVED`;
+        dedupMsg.className = 'msg ok';
+        // Reload list
+        const r2 = await apiFetch('/api/admin/teachers');
+        _existingTeachers = r2.ok ? await r2.json() : _existingTeachers;
+        renderTeacherRows(listEl, _existingTeachers);
+      } else {
+        dedupMsg.textContent = '> [ERR] DEDUP FAILED'; dedupMsg.className = 'msg err';
+      }
+      dedupBtn.disabled = false;
+    });
+  }
 }
 
 function renderTeacherRows(listEl, teachers) {
