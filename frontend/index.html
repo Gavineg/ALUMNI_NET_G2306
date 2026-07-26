@@ -283,26 +283,33 @@
       for (let i = STEPS; i >= 0; i--) {
         const op = i / STEPS;
         const seriesUpdates = [];
-        // 原点
-        seriesUpdates.push({ id: 'origin', data: [{ name: 'ORIGIN',
-          value: lastMapData?.originCoords ?? [114.247, 22.723],
-          itemStyle: { color: '#ff4b1f', shadowBlur: 24 * op, shadowColor: 'rgba(255,75,31,0.8)', opacity: op } }] });
-        // 节点
+        // 原点：opacity + 关涟漪
+        seriesUpdates.push({ id: 'origin',
+          rippleEffect: { scale: op > 0 ? 3 : 0 },
+          data: [{ name: 'ORIGIN',
+            value: lastMapData?.originCoords ?? [114.247, 22.723],
+            itemStyle: { color: '#ff4b1f', shadowBlur: 24 * op, shadowColor: 'rgba(255,75,31,0.8)', opacity: op } }] });
+        // 节点：opacity + 关涟漪
         for (let n = 0; n < nodeCount; n++) {
           const node = lastMapData.scatterData[n];
           const nc = node?.nodeColor ?? '#b8ff47';
           seriesUpdates.push({ id: `target-${n}`,
+            rippleEffect: { scale: op > 0 ? 2.5 : 0 },
             data: [{ name: node.name, value: node.value,
               itemStyle: { color: nc, opacity: op, shadowBlur: op * 14, shadowColor: nc } }] });
         }
-        // pulse-lines / static-lines
-        seriesUpdates.push({ id: 'pulse-lines',  lineStyle: { opacity: op } });
+        // pulse-lines：关 effect + opacity
+        seriesUpdates.push({ id: 'pulse-lines',
+          effect: { show: op > 0 },
+          lineStyle: { opacity: op } });
         seriesUpdates.push({ id: 'static-lines', lineStyle: { opacity: op } });
         chart.setOption({ series: seriesUpdates });
-        // comet-canvas globalAlpha
         if (cometCvs) cometCvs.style.opacity = op;
         await new Promise(r => setTimeout(r, STEP_MS));
       }
+
+      // pulse-lines 清空 data，确保粒子完全消失，归位后重新注入才能从头出发
+      chart.setOption({ series: [{ id: 'pulse-lines', data: [], effect: { show: false } }] });
 
       // ── 2. 地图归位 ──────────────────────────────────────────
       chart.setOption({ geo: { zoom: initZoom, center: initCenter, animationDurationUpdate: 600 } });
@@ -315,25 +322,48 @@
       await new Promise(r => setTimeout(r, 650));
 
       // ── 3. 淡入 ─────────────────────────────────────────────
+      // 先把 pulse-lines data 重新注入（此刻 effect: show=false，粒子计时从 0 开始）
+      if (lastMapData?.linesData) {
+        chart.setOption({ series: [{
+          id: 'pulse-lines', type: 'lines', coordinateSystem: 'geo', zlevel: 1,
+          effect: { show: false, period: 3.5, trailLength: 0.3, color: 'rgba(184,255,71,0.6)', symbolSize: 3 },
+          lineStyle: { color: 'rgba(0,0,0,0)', width: 0, curveness: 0.22, opacity: 0 },
+          data: lastMapData.linesData,
+        }] });
+      }
+
       for (let i = 0; i <= STEPS; i++) {
         const op = i / STEPS;
         const seriesUpdates = [];
-        seriesUpdates.push({ id: 'origin', data: [{ name: 'ORIGIN',
-          value: lastMapData?.originCoords ?? [114.247, 22.723],
-          itemStyle: { color: '#ff4b1f', shadowBlur: 24 * op, shadowColor: 'rgba(255,75,31,0.8)', opacity: op } }] });
+        seriesUpdates.push({ id: 'origin',
+          rippleEffect: { scale: 3 * op },
+          data: [{ name: 'ORIGIN',
+            value: lastMapData?.originCoords ?? [114.247, 22.723],
+            itemStyle: { color: '#ff4b1f', shadowBlur: 24 * op, shadowColor: 'rgba(255,75,31,0.8)', opacity: op } }] });
         for (let n = 0; n < nodeCount; n++) {
           const node = lastMapData.scatterData[n];
           const nc = node?.nodeColor ?? '#b8ff47';
           seriesUpdates.push({ id: `target-${n}`,
+            rippleEffect: { scale: 2.5 * op },
             data: [{ name: node.name, value: node.value,
               itemStyle: { color: nc, opacity: op, shadowBlur: op * 14, shadowColor: nc } }] });
         }
-        seriesUpdates.push({ id: 'pulse-lines',  lineStyle: { opacity: op } });
+        seriesUpdates.push({ id: 'pulse-lines', lineStyle: { opacity: op } });
         seriesUpdates.push({ id: 'static-lines', lineStyle: { opacity: op } });
         chart.setOption({ series: seriesUpdates });
         if (cometCvs) cometCvs.style.opacity = op;
         await new Promise(r => setTimeout(r, STEP_MS));
       }
+
+      // 淡入完成后开启 pulse-lines effect（粒子从出发点开始跑）
+      chart.setOption({ series: [{ id: 'pulse-lines', effect: { show: true } }] });
+      // 节点涟漪恢复
+      chart.setOption({ series: [
+        { id: 'origin', rippleEffect: { brushType: 'stroke', scale: 3, period: 2 } },
+        ...Array.from({ length: nodeCount }, (_, n) => ({
+          id: `target-${n}`, rippleEffect: { brushType: 'stroke', scale: 2.5, period: 1.8 }
+        }))
+      ]});
 
       requestAnimationFrame(() => dosInput.focus());
     };
