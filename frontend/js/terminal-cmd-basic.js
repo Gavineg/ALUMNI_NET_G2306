@@ -170,12 +170,17 @@ export async function runCommand(raw, ctx) {
     }
     // Fetch commit count from GitHub
     let commitCount = '...';
+    let githubMessage = '';
     try {
       const r = await fetch('https://api.github.com/repos/Gavineg/ALUMNI_NET_G2306/commits?per_page=1', { headers: { Accept: 'application/vnd.github.v3+json' } });
+      const data = await r.json().catch(() => null);
       const link = r.headers.get('Link') || '';
       const m2 = link.match(/&page=(\d+)>; rel="last"/);
       commitCount = m2 ? m2[1] : '?';
-    } catch {}
+      githubMessage = data?.message ? String(data.message) : '';
+    } catch (e) {
+      githubMessage = e?.message || 'UNAVAILABLE';
+    }
     return [
       L('ALUMNI_NET :: G2306'),
       L(`VERSION: v${commitCount}`),
@@ -184,7 +189,7 @@ export async function runCommand(raw, ctx) {
       }},
       L(`COMMITS: ${commitCount}`),
       L('STATUS: ONLINE', 'OK'),
-      L('BUG FIXED: NaN'),
+      L(`BUG FIXED: ${githubMessage || 'UNKNOWN'}`),
       L('SLEEP: 404 NOT FOUND'),
       L('THANK YOU FOR VISITING.', 'OK'),
     ];

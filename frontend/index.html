@@ -270,21 +270,41 @@
     }
 
     let lastMapData = null;
+    let mapResetting = false;
+    window.__mapResetting = false;
+
+    function getInteractiveTarget(el) {
+      if (!el) return null;
+      return el.closest('button, a, [onclick], [role="button"], input[type="button"], input[type="submit"], .close-btn, #reset-btn, #dos-input-wrap, .terminal-option, .hud-btn');
+    }
+
     boot().then(() => {}); // 保持原有启动流程
 
     // ── 全局防重复点击 ────────────────────────────────────────
     const _btnCooldown = new WeakMap();
     document.addEventListener('click', e => {
-      const btn = e.target.closest('[onclick], button, .close-btn, #reset-btn, #dos-input-wrap');
+      const btn = getInteractiveTarget(e.target);
       if (!btn) return;
       if (_btnCooldown.get(btn)) { e.stopImmediatePropagation(); e.preventDefault(); return; }
       _btnCooldown.set(btn, true);
       setTimeout(() => _btnCooldown.delete(btn), 600);
     }, true);
 
+    document.addEventListener('keydown', e => {
+      const btn = getInteractiveTarget(e.target);
+      if (!btn || !['Enter', ' '].includes(e.key)) return;
+      if (_btnCooldown.get(btn)) { e.preventDefault(); return; }
+      _btnCooldown.set(btn, true);
+      setTimeout(() => _btnCooldown.delete(btn), 600);
+    }, true);
+
     window.resetMap = async function() {
-      closePanel();
-      chart.setOption({ geo: { roam: false } });
+      if (mapResetting) return;
+      mapResetting = true;
+      window.__mapResetting = true;
+      try {
+        closePanel();
+        chart.setOption({ geo: { roam: false } });
 
       // ── 1. 淡出所有内容 series + canvas 虚线 ─────────────────
       const cometCvs = document.getElementById('comet-canvas');
@@ -389,6 +409,10 @@
       chart.setOption({ geo: { roam: true } });
 
       requestAnimationFrame(() => dosInput.focus());
+      } finally {
+        mapResetting = false;
+        window.__mapResetting = false;
+      }
     };
 
     document.getElementById('close-btn').addEventListener('click', () => {
