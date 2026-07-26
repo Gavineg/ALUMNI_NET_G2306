@@ -413,19 +413,66 @@ export async function updateTeacherMe(userId, request, db) {
 // ── Memorial / Yearbook ───────────────────────────────────────
 
 export async function getMemorial(db) {
-  const docs = await db.list('memorial');
-  // memorial is stored as a single doc with id='config', value=JSON string
+  const [docs, imgDocs] = await Promise.all([
+    db.list('memorial'),
+    db.list('memorial_images'),
+  ]);
   const doc = docs.find(d => d.id === 'config');
   if (!doc || !doc.value) return json({ title: 'G2306 YEARBOOK', slides: [], boot_lines: [] });
-  try { return json(JSON.parse(doc.value)); }
-  catch { return json({ title: 'G2306 YEARBOOK', slides: [], boot_lines: [] }); }
+  let cfg;
+  try { cfg = JSON.parse(doc.value); } catch { return json({ title: 'G2306 YEARBOOK', slides: [], boot_lines: [] }); }
+
+  // Rehydrate image URLs from memorial_images collection
+  const imgMap = {};
+  for (const d of imgDocs) imgMap[d.id] = d.data || '';
+  if (Array.isArray(cfg.slides)) {
+    cfg.slides = cfg.slides.map(s => ({
+      ...s,
+      url: s.img_id ? (imgMap[s.img_id] || '') : (s.url || ''),
+    }));
+  }
+  return json(cfg);
 }
 
 export async function updateMemorial(request, db) {
   const body = await request.json().catch(() => null);
   if (!body) return json({ error: 'invalid json' }, 400);
-  // validate basic shape
   if (body.slides && !Array.isArray(body.slides)) return json({ error: 'slides must be array' }, 400);
-  await db.set('memorial', 'config', { value: JSON.stringify(body) });
+
+  // Separate image data from slides; store each base64 image in its own doc
+  const [existingImgDocs] = await Promise.all([db.list('memorial_images')]);
+  const usedImgIds = new Set();
+
+  const slides = await Promise.all((body.slides || []).map(async (s, i) => {
+    const slide = { ...s };
+    const isBase64 = typeof s.url === 'string' && s.url.startsWith('data:');
+    if (isBase64) {
+      // Reuse existing img_id if present, otherwise create new doc
+      const imgId = s.img_id || null;
+      let docId;
+      if (imgId) {
+        await db.set('memorial_images', imgId, { data: s.url, slide_idx: i });
+        docId = imgId;
+      } else {
+        const created = await db.add('memorial_images', { data: s.url, slide_idx: i });
+        docId = created.id;
+      }
+      usedImgIds.add(docId);
+      slide.img_id = docId;
+      delete slide.url; // don't store base64 in config doc
+    } else {
+      // External URL — clear any old img_id
+      delete slide.img_id;
+      if (s.img_id) usedImgIds.add(null); // don't keep old id but don't delete yet
+    }
+    return slide;
+  }));
+
+  // Delete orphaned image docs (slides that were removed or switched to URL)
+  const orphans = existingImgDocs.filter(d => !usedImgIds.has(d.id));
+  await Promise.all(orphans.map(d => db.delete('memorial_images', d.id)));
+
+  const cfg = { ...body, slides };
+  await db.set('memorial', 'config', { value: JSON.stringify(cfg) });
   return json({ ok: true });
 }

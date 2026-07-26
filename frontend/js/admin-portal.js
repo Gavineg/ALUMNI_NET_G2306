@@ -873,20 +873,46 @@ async function renderYearbook(content) {
         }
       }
 
+      function compressAndSetSlideImage(file) {
+        if (!file.type.startsWith('image/')) return;
+        if (lbl) { lbl.textContent = '> COMPRESSING...'; }
+        const reader = new FileReader();
+        reader.onload = e => {
+          const img = new Image();
+          img.onload = () => {
+            const MAX_PX = 900;
+            let w = img.width, h = img.height;
+            if (w > MAX_PX || h > MAX_PX) {
+              const scale = MAX_PX / Math.max(w, h);
+              w = Math.round(w * scale); h = Math.round(h * scale);
+            }
+            const canvas = document.createElement('canvas');
+            canvas.width = w; canvas.height = h;
+            canvas.getContext('2d').drawImage(img, 0, 0, w, h);
+            let quality = 0.82;
+            let dataUrl = canvas.toDataURL('image/jpeg', quality);
+            while (dataUrl.length > 250000 && quality > 0.25) {
+              quality -= 0.08;
+              dataUrl = canvas.toDataURL('image/jpeg', quality);
+            }
+            setSlideImage(dataUrl);
+          };
+          img.src = e.target.result;
+        };
+        reader.readAsDataURL(file);
+      }
+
       if (dropZone) {
         dropZone.addEventListener('dragover', e => { e.preventDefault(); dropZone.style.borderColor='var(--hud-primary)'; });
         dropZone.addEventListener('dragleave', () => { dropZone.style.borderColor=''; });
         dropZone.addEventListener('drop', e => {
           e.preventDefault(); dropZone.style.borderColor='';
           const file = e.dataTransfer.files[0];
-          if (!file || !file.type.startsWith('image/')) return;
-          const reader = new FileReader();
-          reader.onload = ev => setSlideImage(ev.target.result);
-          reader.readAsDataURL(file);
+          if (file) compressAndSetSlideImage(file);
         });
         dropZone.addEventListener('click', () => {
           const inp = document.createElement('input'); inp.type='file'; inp.accept='image/*';
-          inp.onchange = () => { const file=inp.files[0]; if (!file) return; const r=new FileReader(); r.onload=ev=>setSlideImage(ev.target.result); r.readAsDataURL(file); };
+          inp.onchange = () => { const file=inp.files[0]; if (file) compressAndSetSlideImage(file); };
           inp.click();
         });
       }
@@ -920,9 +946,10 @@ async function renderYearbook(content) {
       boot_lines: bootRaw ? bootRaw.split('\n').map(l => l.trimEnd()) : [],
       slides,
     };
+    msg.textContent = '> SAVING...'; msg.className = 'msg';
     const r = await apiFetch('/api/admin/memorial', { method: 'PUT', body: JSON.stringify(payload) });
     if (r.ok) { msg.textContent = '> YEARBOOK SAVED [OK]'; msg.className = 'msg ok'; }
-    else      { msg.textContent = '> [ERR] SAVE FAILED';  msg.className = 'msg err'; }
+    else      { msg.textContent = '> [ERR] SAVE FAILED';   msg.className = 'msg err'; }
   });
 }
 
