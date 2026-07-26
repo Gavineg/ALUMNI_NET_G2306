@@ -875,7 +875,8 @@ async function renderYearbook(content) {
 
       function compressAndSetSlideImage(file) {
         if (!file.type.startsWith('image/')) return;
-        if (lbl) { lbl.textContent = '> COMPRESSING...'; }
+        const lbl = dropZone.querySelector('.slide-drop-label');
+        if (lbl) lbl.textContent = '> COMPRESSING...';
         const reader = new FileReader();
         reader.onload = e => {
           const img = new Image();
