@@ -140,6 +140,43 @@
 
       await glitchResolve(headerEl, '[G2306] CHUANG XIN BASE', 140, 12);
       subEl.textContent = '';
+
+      // 手机端：粒子启动前先缩放到包含所有节点的最优视角
+      if (isMobile) {
+        await typeWrite(subEl, 'LOCATING TARGETS...', 12);
+        const lons = [mapData.originCoords[0], ...mapData.scatterData.map(n => n.value[0])];
+        const lats = [mapData.originCoords[1], ...mapData.scatterData.map(n => n.value[1])];
+        const minLon = Math.min(...lons), maxLon = Math.max(...lons);
+        const minLat = Math.min(...lats), maxLat = Math.max(...lats);
+        const targetCenter = [(minLon + maxLon) / 2, (minLat + maxLat) / 2];
+        // 先把 center 移到目标，等两帧让 ECharts 布局稳定，再量像素算 zoom
+        chart.setOption({ geo: { center: targetCenter } }, { silent: true });
+        await new Promise(r => requestAnimationFrame(() => requestAnimationFrame(r)));
+        const mv = calcMobileView(mapData.scatterData, mapData.originCoords, initZoom);
+        const targetZoom = mv.zoom;
+        // easeInOut 缓动（此时 comet-canvas 尚未创建，无需 _redrawDashes）
+        const fromZoom   = initZoom;
+        const fromCenter = [...initCenter];
+        function easeInOut(t) { return t < 0.5 ? 2*t*t : -1+(4-2*t)*t; }
+        await new Promise(resolve => {
+          const t0 = performance.now();
+          function animZoom(now) {
+            const t = Math.min((now - t0) / 900, 1);
+            const e = easeInOut(t);
+            chart.setOption({ geo: {
+              zoom:   fromZoom   + (targetZoom        - fromZoom)   * e,
+              center: [fromCenter[0] + (targetCenter[0] - fromCenter[0]) * e,
+                       fromCenter[1] + (targetCenter[1] - fromCenter[1]) * e],
+            }}, { silent: true });
+            t < 1 ? requestAnimationFrame(animZoom) : resolve();
+          }
+          requestAnimationFrame(animZoom);
+        });
+        initZoom   = targetZoom;
+        initCenter = targetCenter;
+        subEl.textContent = '';
+      }
+
       await typeWrite(subEl, 'LAUNCHING TRACER SWARM...', 12);
 
       // comet 模式：await Canvas 动画完成（所有节点亮起后 resolve）
@@ -172,41 +209,6 @@
 
       if (mapData.lineAnim === 'rotary') {
         startRadarSweep(chart, mapData.originCoords, mapData.scatterData);
-      }
-
-      // 手机端：节点全部出现后，平移缩放到包含所有节点的最优视角
-      if (isMobile) {
-        const lons = [mapData.originCoords[0], ...mapData.scatterData.map(n => n.value[0])];
-        const lats = [mapData.originCoords[1], ...mapData.scatterData.map(n => n.value[1])];
-        const minLon = Math.min(...lons), maxLon = Math.max(...lons);
-        const minLat = Math.min(...lats), maxLat = Math.max(...lats);
-        const targetCenter = [(minLon + maxLon) / 2, (minLat + maxLat) / 2];
-        const mv = calcMobileView(mapData.scatterData, mapData.originCoords, initZoom);
-        const targetZoom = mv.zoom;
-
-        const fromZoom   = initZoom;
-        const fromCenter = [...initCenter];
-        const ZOOM_DUR   = 900;
-        const t0zoom     = performance.now();
-        function easeInOut(t) { return t < 0.5 ? 2*t*t : -1+(4-2*t)*t; }
-        await new Promise(resolve => {
-          function animZoom(now) {
-            const t = Math.min((now - t0zoom) / ZOOM_DUR, 1);
-            const e = easeInOut(t);
-            chart.setOption({ geo: {
-              zoom:   fromZoom   + (targetZoom        - fromZoom)        * e,
-              center: [fromCenter[0] + (targetCenter[0] - fromCenter[0]) * e,
-                       fromCenter[1] + (targetCenter[1] - fromCenter[1]) * e],
-            }}, { silent: true });
-            const cometCvs = document.getElementById('comet-canvas');
-            if (cometCvs?._redrawDashes) cometCvs._redrawDashes();
-            if (t < 1) requestAnimationFrame(animZoom);
-            else resolve();
-          }
-          requestAnimationFrame(animZoom);
-        });
-        initZoom   = targetZoom;
-        initCenter = targetCenter;
       }
 
       subEl.textContent = '';
