@@ -306,10 +306,23 @@ export async function deleteTeacher(id, db) {
 }
 
 // Teacher self-update (authenticated as teacher)
+// Teachers are student accounts; their display entry in 'teachers' collection is linked via student_id field.
+async function _findTeacherDoc(userId, db) {
+  const docs = await db.query('teachers', 'student_id', '==', userId);
+  return docs[0] || null;
+}
+
 export async function getTeacherMe(userId, db) {
-  const doc = await db.get('teachers', userId);
-  if (!doc) return json({ error: 'not found' }, 404);
-  return json({ id: doc.id, name: doc.name || '', subject: doc.subject || '', contact: doc.contact || '', note: doc.note || '' });
+  const student = await db.get('students', userId);
+  if (!student) return json({ error: 'not found' }, 404);
+  const doc = await _findTeacherDoc(userId, db);
+  return json({
+    id:      doc?.id   || null,
+    name:    doc?.name    ?? student.display_name ?? '',
+    subject: doc?.subject ?? '',
+    contact: doc?.contact ?? '',
+    note:    doc?.note    ?? '',
+  });
 }
 
 export async function updateTeacherMe(userId, request, db) {
@@ -321,7 +334,21 @@ export async function updateTeacherMe(userId, request, db) {
   if ('contact' in body) update.contact = String(body.contact).slice(0, 100);
   if ('note'    in body) update.note    = String(body.note).slice(0, 200);
   if (!Object.keys(update).length) return json({ error: 'nothing to update' }, 400);
-  await db.set('teachers', userId, update);
+  const existing = await _findTeacherDoc(userId, db);
+  if (existing) {
+    await db.set('teachers', existing.id, update);
+  } else {
+    // Auto-create a linked teachers-collection entry for this teacher account
+    const student = await db.get('students', userId);
+    await db.add('teachers', {
+      student_id: userId,
+      name:    update.name    ?? student?.display_name ?? '',
+      subject: update.subject ?? '',
+      contact: update.contact ?? '',
+      note:    update.note    ?? '',
+      sort_order: 999,
+    });
+  }
   return json({ ok: true });
 }
 
