@@ -19,6 +19,13 @@ let clickThrottle = null;
 let nodeClickCooldownUntil = 0;
 const NODE_CLICK_COOLDOWN_MS = 600;
 
+function tryConsumeClickCooldown() {
+  const now = Date.now();
+  if (now < nodeClickCooldownUntil) return false;
+  nodeClickCooldownUntil = now + NODE_CLICK_COOLDOWN_MS;
+  return true;
+}
+
 function updateCloseBtn() {
   const btn = document.getElementById('close-btn');
   if (!btn) return;
@@ -51,11 +58,7 @@ export function initMapUI(chart, initZoom, initCenter, originInfo) {
     if (typeof window !== 'undefined' && window.__mapResetting) return;
 
     const isNodeClick = params.seriesId === 'origin' || params.seriesId === 'origin-hit' || params.seriesId?.startsWith('target-');
-    if (isNodeClick) {
-      const now = Date.now();
-      if (now < nodeClickCooldownUntil) return;
-      nodeClickCooldownUntil = now + NODE_CLICK_COOLDOWN_MS;
-    }
+    if (isNodeClick && !tryConsumeClickCooldown()) return;
 
     // origin node click
     if (params.seriesId === 'origin' || params.seriesId === 'origin-hit') {
@@ -183,6 +186,8 @@ async function showCityMenu(cluster) {
     div.innerHTML = `<span style="color:var(--hud-text-dim)">[${String(i+1).padStart(2,'0')}]</span> ${city} <span style="color:var(--hud-text-dim)">(${count} INST)</span>`;
     div.addEventListener('click', () => {
       if (session !== currentSession) return;
+      if (typeof window !== 'undefined' && window.__mapResetting) return;
+      if (!tryConsumeClickCooldown()) return;
       navStack.push(() => showCityMenu(cluster));
       updateCloseBtn();
       showUniMenu(cityMap[city], city);
@@ -232,6 +237,8 @@ async function showUniMenu(unis, cityName) {
     div.innerHTML = `<span style="color:var(--hud-text-dim)">[${String(i+1).padStart(2,'0')}]</span> ${u.university}`;
     div.addEventListener('click', () => {
       if (session !== currentSession) return;
+      if (typeof window !== 'undefined' && window.__mapResetting) return;
+      if (!tryConsumeClickCooldown()) return;
       navStack.push(() => showUniMenu(unis, cityName));
       updateCloseBtn();
       showStudentInfo([u]);
